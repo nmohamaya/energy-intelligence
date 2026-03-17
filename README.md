@@ -153,54 +153,157 @@ GET  /model/info            — Model metadata and feature descriptions
 
 ---
 
-## Getting Started
+## Quick Start — See It Running in 2 Minutes
 
-### Option 1: Local Development (Node.js)
+### Prerequisites
+
+| Tool | Version | Check |
+|---|---|---|
+| **Node.js** | 20+ | `node --version` |
+| **npm** | 9+ | `npm --version` |
+| **Docker** (optional) | 24+ | `docker --version` |
+| **kubectl** (optional) | 1.28+ | `kubectl version --client` |
+
+### Launch the App
 
 ```bash
-# Install dependencies
+# 1. Clone the repo
+git clone https://github.com/nmohamaya/energy-intelligence.git
+cd energy-intelligence
+
+# 2. Install dependencies
 npm install
 
-# Run in development mode (Express + Vite HMR)
+# 3. Start the development server
 npm run dev
-
-# Build for production
-npm run build
-
-# Run production server
-NODE_ENV=production node dist/index.cjs
 ```
 
-The dev server starts at `http://localhost:5000`.
+**That's it.** Open [http://localhost:5000](http://localhost:5000) in your browser.
+
+### What You'll See
+
+The app opens to the **Portfolio Dashboard** with a dark industrial-control-room theme. Use the sidebar to navigate:
+
+| Page | What It Shows |
+|---|---|
+| **Dashboard** | 5 KPI cards, 24-hour energy production chart with forecast, asset breakdown donut, alerts feed |
+| **Fleet** | Searchable table of 20 German renewable energy assets — click any row for a detail slide-over |
+| **Maintenance** | AI failure predictions with risk levels, 90-day failure timeline, estimated savings |
+| **Digital Twin** | Select an asset → see live metrics (power, temperature, efficiency) + scenario comparisons |
+| **Analytics** | 30-day production vs curtailment, energy loss breakdown, revenue optimization, dispatch heatmap |
+
+Toggle **light/dark mode** with the theme switch in the sidebar. All data is simulated — the prototype demonstrates the UI, API contract, and architecture, not a live connection.
+
+### Try the ML Prediction API (Optional)
+
+If you want to also run the ML microservice alongside the main app:
+
+```bash
+# In a separate terminal — requires Python 3.11+ and pip
+cd services/prediction-service
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8001
+```
+
+Then test the anomaly detection endpoint:
+
+```bash
+curl -X POST http://localhost:8001/predict/anomaly \
+  -H "Content-Type: application/json" \
+  -d '{
+    "temperature": 85.2,
+    "vibration": 4.8,
+    "power_output": 1200,
+    "wind_speed": 12.5,
+    "humidity": 65.0,
+    "voltage": 690,
+    "current": 145.3
+  }'
+```
+
+Expected response:
+```json
+{
+  "is_anomaly": false,
+  "anomaly_score": -0.12,
+  "confidence": 0.87,
+  "model_version": "1.0.0"
+}
+```
+
+Check model info:
+```bash
+curl http://localhost:8001/model/info
+```
+
+---
+
+## All Deployment Options
+
+### Option 1: Local Development (Node.js only)
+
+The quickest path — runs the React frontend and Express API on a single port with hot module reloading.
+
+```bash
+npm install
+npm run dev          # → http://localhost:5000 (Vite HMR + Express)
+```
+
+For a production build:
+
+```bash
+npm run build
+NODE_ENV=production node dist/index.cjs   # → http://localhost:5000
+```
 
 ### Option 2: Docker Compose (Full Stack)
 
-Runs the web app, ML prediction service, and TimescaleDB together:
+Runs all three services (web app, ML prediction service, TimescaleDB) in containers. Best for testing the full microservices architecture locally.
 
 ```bash
-# Build and start all services
+# Build and start all services (first run takes ~2 min to build images)
 docker-compose up --build
 
-# Run in background
+# Or run in the background
 docker-compose up --build -d
 
-# View logs
+# View logs across all services
 docker-compose logs -f
 
-# Stop all services
+# View logs for a specific service
+docker-compose logs -f prediction-service
+
+# Stop everything
 docker-compose down
+
+# Stop and remove volumes (clean slate)
+docker-compose down -v
 ```
 
-| Service | URL | Description |
+| Service | URL | What To Open |
 |---|---|---|
-| Web App | http://localhost:5000 | Main dashboard UI + API |
-| Prediction Service | http://localhost:8001 | ML prediction REST API |
-| TimescaleDB | localhost:5432 | PostgreSQL time-series database |
+| **Web App** | [http://localhost:5000](http://localhost:5000) | Main dashboard — open this in your browser |
+| **Prediction Service** | [http://localhost:8001/health](http://localhost:8001/health) | ML API health check |
+| **Prediction Docs** | [http://localhost:8001/docs](http://localhost:8001/docs) | FastAPI auto-generated Swagger UI |
+| **TimescaleDB** | `localhost:5432` | Connect via `psql -h localhost -U energy_user -d energy_intelligence` |
 
 ### Option 3: Kubernetes Deployment
 
-For production-grade deployment with autoscaling and self-healing:
+For production-grade deployment with autoscaling and self-healing. Requires a running K8s cluster (minikube, kind, EKS, GKE, etc.).
 
+**Step 1: Build and push container images**
+```bash
+# Build images
+docker build -t ghcr.io/nmohamaya/energy-intelligence/web-app:latest .
+docker build -t ghcr.io/nmohamaya/energy-intelligence/prediction-service:latest \
+  services/prediction-service/
+
+# Push to GitHub Container Registry (requires `docker login ghcr.io`)
+docker push ghcr.io/nmohamaya/energy-intelligence/web-app:latest
+docker push ghcr.io/nmohamaya/energy-intelligence/prediction-service:latest
+```
+
+**Step 2: Deploy to the cluster**
 ```bash
 # 1. Create the namespace
 kubectl apply -f k8s/base/namespace.yaml
@@ -209,7 +312,7 @@ kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f k8s/base/configmap.yaml
 kubectl apply -f k8s/base/secret.yaml
 
-# 3. Deploy the database (StatefulSet — wait for it to be ready)
+# 3. Deploy the database first (StatefulSet — wait for it to be ready)
 kubectl apply -f k8s/base/timescaledb.yaml
 kubectl -n energy-intelligence rollout status statefulset/timescaledb
 
@@ -217,17 +320,20 @@ kubectl -n energy-intelligence rollout status statefulset/timescaledb
 kubectl apply -f k8s/base/web-app.yaml
 kubectl apply -f k8s/base/prediction-service.yaml
 
-# 5. Configure networking
+# 5. Configure networking and autoscaling
 kubectl apply -f k8s/base/ingress.yaml
 kubectl apply -f k8s/base/network-policy.yaml
-
-# 6. Enable autoscaling
 kubectl apply -f k8s/base/hpa.yaml
+```
 
-# Verify everything is running
+**Step 3: Verify and access**
+```bash
+# Check all pods are Running
 kubectl -n energy-intelligence get pods
-kubectl -n energy-intelligence get services
-kubectl -n energy-intelligence get hpa
+
+# Quick access without ingress (for local clusters)
+kubectl -n energy-intelligence port-forward svc/web-app 5000:5000
+# → Open http://localhost:5000
 ```
 
 #### Kubernetes Commands Cheat Sheet
@@ -249,9 +355,6 @@ kubectl -n energy-intelligence set image deployment/web-app \
 
 # Rollback to previous version
 kubectl -n energy-intelligence rollout undo deployment/web-app
-
-# Port-forward for local access (no ingress needed)
-kubectl -n energy-intelligence port-forward svc/web-app 5000:5000
 
 # Check resource utilization
 kubectl -n energy-intelligence top pods
