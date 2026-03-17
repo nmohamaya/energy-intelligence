@@ -1,8 +1,8 @@
 # Energy Intelligence
 
-An AI-powered predictive operations platform for renewable energy asset management. This prototype demonstrates what the next-generation "operating system for renewable energy" could look like.
+An AI-powered predictive operations platform for renewable energy asset management. This prototype demonstrates what the next-generation "operating system for renewable energy" could look like — built with a production-grade microservices architecture.
 
-![Dashboard](https://img.shields.io/badge/Status-Prototype-green) ![React](https://img.shields.io/badge/React-18-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-3-blue)
+![Dashboard](https://img.shields.io/badge/Status-Prototype-green) ![React](https://img.shields.io/badge/React-18-blue) ![Node.js](https://img.shields.io/badge/Node.js-20-green) ![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED) ![Python](https://img.shields.io/badge/Python-3.11-yellow) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-3-blue)
 
 ## Overview
 
@@ -14,35 +14,109 @@ Energy Intelligence extends beyond traditional PV monitoring into a full predict
 - **Energy Analytics & Curtailment** — Per-event energy loss accounting, grid dispatch optimization, and revenue analytics
 - **Real-Time Operations Dashboard** — KPI monitoring, production charts, and alert feeds
 
-## Architecture
+---
 
-### Tech Stack
-- **Frontend**: React 18 + TypeScript + Tailwind CSS + shadcn/ui + Recharts
-- **Backend**: Express.js (Node.js) with RESTful API
-- **Routing**: wouter with hash-based routing
-- **State Management**: TanStack React Query
-- **Build**: Vite + esbuild
+## System Architecture
 
-### Key Architectural Decisions
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        KUBERNETES CLUSTER                               │
+│                     namespace: energy-intelligence                       │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                    INGRESS (nginx)                               │    │
+│  │              TLS termination + path routing                      │    │
+│  │         /           → web-app                                    │    │
+│  │         /api/predict → prediction-service                        │    │
+│  └────────────────────┬────────────────────┬───────────────────────┘    │
+│                       │                    │                             │
+│  ┌────────────────────▼──────┐  ┌─────────▼─────────────────────┐      │
+│  │     WEB APP (Node.js)     │  │   PREDICTION SERVICE (Python)  │      │
+│  │                           │  │                                 │      │
+│  │  React 18 + Express.js    │  │  FastAPI + scikit-learn         │      │
+│  │  TypeScript + Tailwind    │  │  Isolation Forest (anomaly)     │      │
+│  │  shadcn/ui + Recharts     │  │  Gradient Boosting (RUL)        │      │
+│  │                           │  │  REST API on port 8001          │      │
+│  │  Replicas: 2-10 (HPA)    │  │  Replicas: 2-8 (HPA)           │      │
+│  │  Port: 5000               │  │  Port: 8001                     │      │
+│  └────────────┬──────────────┘  └──────────────┬──────────────────┘      │
+│               │                                │                         │
+│  ┌────────────▼────────────────────────────────▼──────────────────┐      │
+│  │                    TIMESCALEDB                                  │      │
+│  │           (PostgreSQL + time-series extension)                  │      │
+│  │                                                                 │      │
+│  │  StatefulSet with PersistentVolumeClaim (10Gi)                 │      │
+│  │  Headless Service for stable DNS                                │      │
+│  │  Port: 5432                                                     │      │
+│  └─────────────────────────────────────────────────────────────────┘      │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────┐      │
+│  │  SUPPORTING RESOURCES                                           │      │
+│  │  • ConfigMap — environment config (DB host, service URLs)       │      │
+│  │  • Secret — database credentials (base64-encoded)               │      │
+│  │  • HPA — CPU-based autoscaling (target: 70%)                   │      │
+│  │  • NetworkPolicy — zero-trust pod-to-pod communication          │      │
+│  └─────────────────────────────────────────────────────────────────┘      │
+└───────────────────────────────────────────────────────────────────────────┘
+```
 
-| Decision | Rationale |
+### Architectural Reasoning
+
+This architecture follows the patterns you'd implement as Head of Engineering at a renewable energy SaaS company:
+
+| Decision | Why It Matters |
 |---|---|
-| **Microservices-ready API design** | Each endpoint (`/api/dashboard`, `/api/assets`, `/api/predictions`, `/api/digital-twin/:id`, `/api/analytics`) maps to a bounded context, enabling future service decomposition |
-| **In-memory data simulation** | Realistic renewable energy data patterns (solar sinusoidal curves, wind fluctuations, BESS charge/discharge cycles) for demo purposes — production would use time-series DB (InfluxDB/TimescaleDB) |
-| **Event-driven alert system** | Alerts with severity levels (Critical/Warning/Info) modeled for future pub/sub integration (Kafka/NATS) |
-| **Schema-first design** | Zod schemas shared between frontend and backend ensure type safety across the full stack |
-| **Dark-first dashboard UI** | Industrial control room aesthetic — operators work in low-light environments, reducing eye strain during 24/7 monitoring |
+| **Microservices over monolith** | The ML prediction workload has fundamentally different resource needs (CPU/memory-intensive, Python) than the web server (I/O-bound, Node.js). Separating them allows independent scaling — during peak prediction batch jobs, you scale prediction pods without touching the web tier. |
+| **Kubernetes over bare EC2/VMs** | K8s gives you declarative infrastructure, self-healing (pod restarts), horizontal autoscaling, rolling deployments with zero downtime, and namespace isolation. For a platform managing critical energy infrastructure, this reliability is non-negotiable. |
+| **StatefulSet for TimescaleDB** | Databases need stable network identity and persistent storage. StatefulSets guarantee ordered, graceful deployment and stable DNS names (`timescaledb-0.timescaledb.energy-intelligence.svc`). A Deployment would lose data on pod restart. |
+| **HPA (Horizontal Pod Autoscaler)** | Energy platforms have predictable load patterns (peaks at solar noon, wind forecasting windows). HPA scales pods based on CPU utilization (70% threshold), keeping costs low during off-peak and ensuring responsiveness during spikes. |
+| **NetworkPolicy (zero-trust)** | Default Kubernetes networking allows any pod to talk to any pod. Network policies restrict traffic: only the web-app and prediction-service can reach the database. This is a security baseline for SOC2/ISO27001 compliance. |
+| **Ingress with TLS** | Single entry point with path-based routing. TLS termination at the edge means internal traffic stays fast (no encryption overhead between pods). The nginx ingress controller handles rate limiting, CORS, and request routing. |
+| **ConfigMap + Secret separation** | Config (DB hostname, service URLs) changes often and is non-sensitive → ConfigMap. Credentials are sensitive → Secret (base64-encoded, ideally integrated with Vault or AWS Secrets Manager in production). |
 
-### API Endpoints
+---
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Frontend** | React 18 + TypeScript + Tailwind CSS + shadcn/ui + Recharts | Dashboard UI with dark-first industrial control room aesthetic |
+| **Backend API** | Express.js (Node.js 20) | RESTful API serving fleet data, dashboard KPIs, analytics |
+| **ML Microservice** | FastAPI (Python 3.11) + scikit-learn | Anomaly detection (Isolation Forest) + Remaining Useful Life prediction (Gradient Boosting) |
+| **Database** | TimescaleDB (PostgreSQL + time-series) | Time-series sensor data, production metrics, event logs |
+| **Container Runtime** | Docker + Docker Compose | Local development with multi-service orchestration |
+| **Orchestration** | Kubernetes | Production deployment with autoscaling, self-healing, zero-downtime deploys |
+| **Build** | Vite + esbuild | Fast frontend builds with HMR |
+| **State Management** | TanStack React Query v5 | Server state caching, background refetching |
+| **Routing** | wouter (hash-based) | Lightweight client-side routing |
+
+---
+
+## ML Prediction Microservice
+
+The prediction service (`services/prediction-service/`) is a standalone Python microservice demonstrating how ML models integrate into the platform:
+
+### Endpoints
 
 ```
-GET /api/dashboard          — Portfolio KPIs + chart data
-GET /api/assets             — Fleet data (filterable: ?type=&status=&search=)
-GET /api/assets/:id         — Single asset detail
-GET /api/predictions        — AI maintenance predictions (filterable: ?risk=)
-GET /api/digital-twin/:id   — Twin metrics + simulation results
-GET /api/analytics          — Energy production, curtailment, and revenue data
+POST /predict/anomaly       — Anomaly detection using Isolation Forest
+POST /predict/rul           — Remaining Useful Life estimation using Gradient Boosting
+GET  /health                — Health check (readiness/liveness probes)
+GET  /model/info            — Model metadata and feature descriptions
 ```
+
+### Models
+
+| Model | Algorithm | Purpose | Input Features |
+|---|---|---|---|
+| **Anomaly Detection** | Isolation Forest | Detects unusual sensor patterns indicating equipment failure | temperature, vibration, power_output, wind_speed, humidity, voltage, current |
+| **RUL Prediction** | Gradient Boosting Regressor | Estimates days until component failure | operating_hours, temperature_avg, vibration_avg, power_cycles, maintenance_count, age_days |
+
+### Architectural Note
+
+> In a production system, these models would be trained on historical SCADA data from actual wind turbines and solar inverters. The prototype uses synthetic training data to demonstrate the API contract and integration pattern. The key architectural decision is **serving models via REST API** rather than embedding them in the Node.js process — this allows data scientists to iterate on models independently, use Python's ML ecosystem, and scale prediction infrastructure separately from the web tier.
+
+---
 
 ## Pages
 
@@ -77,13 +151,17 @@ GET /api/analytics          — Energy production, curtailment, and revenue data
 - Revenue optimization cards (Spot Price, Dispatch Window, Arbitrage Opportunity)
 - Hourly grid dispatch schedule heatmap
 
+---
+
 ## Getting Started
+
+### Option 1: Local Development (Node.js)
 
 ```bash
 # Install dependencies
 npm install
 
-# Run in development mode
+# Run in development mode (Express + Vite HMR)
 npm run dev
 
 # Build for production
@@ -95,25 +173,157 @@ NODE_ENV=production node dist/index.cjs
 
 The dev server starts at `http://localhost:5000`.
 
+### Option 2: Docker Compose (Full Stack)
+
+Runs the web app, ML prediction service, and TimescaleDB together:
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Run in background
+docker-compose up --build -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+| Service | URL | Description |
+|---|---|---|
+| Web App | http://localhost:5000 | Main dashboard UI + API |
+| Prediction Service | http://localhost:8001 | ML prediction REST API |
+| TimescaleDB | localhost:5432 | PostgreSQL time-series database |
+
+### Option 3: Kubernetes Deployment
+
+For production-grade deployment with autoscaling and self-healing:
+
+```bash
+# 1. Create the namespace
+kubectl apply -f k8s/base/namespace.yaml
+
+# 2. Deploy configuration and secrets
+kubectl apply -f k8s/base/configmap.yaml
+kubectl apply -f k8s/base/secret.yaml
+
+# 3. Deploy the database (StatefulSet — wait for it to be ready)
+kubectl apply -f k8s/base/timescaledb.yaml
+kubectl -n energy-intelligence rollout status statefulset/timescaledb
+
+# 4. Deploy application services
+kubectl apply -f k8s/base/web-app.yaml
+kubectl apply -f k8s/base/prediction-service.yaml
+
+# 5. Configure networking
+kubectl apply -f k8s/base/ingress.yaml
+kubectl apply -f k8s/base/network-policy.yaml
+
+# 6. Enable autoscaling
+kubectl apply -f k8s/base/hpa.yaml
+
+# Verify everything is running
+kubectl -n energy-intelligence get pods
+kubectl -n energy-intelligence get services
+kubectl -n energy-intelligence get hpa
+```
+
+#### Kubernetes Commands Cheat Sheet
+
+```bash
+# Watch pods in real-time
+kubectl -n energy-intelligence get pods -w
+
+# Check pod logs
+kubectl -n energy-intelligence logs -f deployment/web-app
+kubectl -n energy-intelligence logs -f deployment/prediction-service
+
+# Scale manually (overrides HPA temporarily)
+kubectl -n energy-intelligence scale deployment/web-app --replicas=5
+
+# Rolling update (zero-downtime)
+kubectl -n energy-intelligence set image deployment/web-app \
+  web-app=ghcr.io/nmohamaya/energy-intelligence/web-app:v2.0.0
+
+# Rollback to previous version
+kubectl -n energy-intelligence rollout undo deployment/web-app
+
+# Port-forward for local access (no ingress needed)
+kubectl -n energy-intelligence port-forward svc/web-app 5000:5000
+
+# Check resource utilization
+kubectl -n energy-intelligence top pods
+```
+
+---
+
 ## Project Structure
 
 ```
-├── client/
+energy-intelligence/
+├── client/                          # Frontend (React + TypeScript)
 │   ├── src/
-│   │   ├── components/       # Shared components (Sidebar, ThemeProvider)
-│   │   ├── pages/            # Page components (Dashboard, Fleet, etc.)
-│   │   ├── lib/              # Utilities (queryClient, cn helper)
-│   │   ├── hooks/            # Custom React hooks
-│   │   └── App.tsx           # Router and app shell
+│   │   ├── components/              # Shared components (Sidebar, ThemeProvider)
+│   │   ├── pages/                   # Page components (Dashboard, Fleet, etc.)
+│   │   ├── lib/                     # Utilities (queryClient, cn helper)
+│   │   ├── hooks/                   # Custom React hooks
+│   │   └── App.tsx                  # Router and app shell
 │   └── index.html
-├── server/
-│   ├── routes.ts             # API endpoint definitions
-│   ├── storage.ts            # Data simulation and in-memory store
-│   └── index.ts              # Express server setup
+├── server/                          # Backend (Express.js)
+│   ├── routes.ts                    # API endpoint definitions
+│   ├── storage.ts                   # Data simulation and in-memory store
+│   └── index.ts                     # Express server setup
 ├── shared/
-│   └── schema.ts             # Zod schemas + TypeScript types
+│   └── schema.ts                    # Zod schemas + TypeScript types
+├── services/
+│   └── prediction-service/          # ML Microservice (Python)
+│       ├── app.py                   # FastAPI application with ML models
+│       ├── requirements.txt         # Python dependencies
+│       └── Dockerfile               # Python 3.11-slim container
+├── k8s/
+│   └── base/                        # Kubernetes manifests
+│       ├── namespace.yaml           # Namespace isolation
+│       ├── configmap.yaml           # Environment configuration
+│       ├── secret.yaml              # Database credentials
+│       ├── web-app.yaml             # Deployment + Service (Node.js)
+│       ├── prediction-service.yaml  # Deployment + Service (Python)
+│       ├── timescaledb.yaml         # StatefulSet + PVC + Headless Service
+│       ├── ingress.yaml             # Nginx ingress with TLS
+│       ├── hpa.yaml                 # Horizontal Pod Autoscalers
+│       └── network-policy.yaml      # Zero-trust network policies
+├── Dockerfile                       # Main app multi-stage build
+├── docker-compose.yml               # Local multi-service development
+├── BUILD_SPEC.md                    # Full design and data specification
 └── package.json
 ```
+
+---
+
+## API Endpoints
+
+### Web App API
+
+```
+GET /api/dashboard          — Portfolio KPIs + chart data
+GET /api/assets             — Fleet data (filterable: ?type=&status=&search=)
+GET /api/assets/:id         — Single asset detail
+GET /api/predictions        — AI maintenance predictions (filterable: ?risk=)
+GET /api/digital-twin/:id   — Twin metrics + simulation results
+GET /api/analytics          — Energy production, curtailment, and revenue data
+```
+
+### Prediction Service API
+
+```
+POST /predict/anomaly       — Detect sensor anomalies (Isolation Forest)
+POST /predict/rul           — Estimate Remaining Useful Life (Gradient Boosting)
+GET  /health                — Health check for K8s probes
+GET  /model/info            — Model metadata and capabilities
+```
+
+---
 
 ## Design System
 
@@ -122,6 +332,36 @@ The dev server starts at `http://localhost:5000`.
 - **Typography**: Inter (body), JetBrains Mono (data values)
 - **Data values**: `font-variant-numeric: tabular-nums lining-nums` for aligned columns
 - **Sidebar**: Always dark, even in light mode
+
+---
+
+## Container Images
+
+The project publishes two container images:
+
+| Image | Base | Size |
+|---|---|---|
+| `ghcr.io/nmohamaya/energy-intelligence/web-app` | node:20-alpine | ~150MB |
+| `ghcr.io/nmohamaya/energy-intelligence/prediction-service` | python:3.11-slim | ~250MB |
+
+Both use multi-stage builds to minimize image size. The web-app Dockerfile builds the frontend with Vite in a build stage, then copies only the production artifacts into the runtime stage.
+
+---
+
+## Production Considerations
+
+This is a prototype. For production deployment, you would additionally need:
+
+- **CI/CD Pipeline** — GitHub Actions building and pushing container images on merge to main
+- **Secrets Management** — HashiCorp Vault or AWS Secrets Manager (not base64-encoded K8s Secrets)
+- **Monitoring** — Prometheus + Grafana for cluster and application metrics
+- **Logging** — EFK stack (Elasticsearch, Fluentd, Kibana) or Loki + Grafana
+- **Service Mesh** — Istio or Linkerd for mTLS, traffic management, and observability
+- **Database Backup** — Automated pg_dump to S3 with point-in-time recovery
+- **Model Registry** — MLflow or similar for ML model versioning and A/B testing
+- **Real SCADA Integration** — OPC-UA or Modbus TCP adapters for real sensor data ingestion
+
+---
 
 ## License
 

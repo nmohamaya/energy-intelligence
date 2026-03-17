@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: energy-intelligence
+  labels:
+    app.kubernetes.io/part-of: energy-intelligence
+    app.kubernetes.io/managed-by: kubectl

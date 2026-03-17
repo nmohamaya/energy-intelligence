@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.gitignore
+*.md
+BUILD_SPEC.md
+k8s/
+services/prediction-service/
+docker-compose.yml
+.env
+*.log
+.DS_Store

@@ -1,0 +1,85 @@
+# =============================================================================
+# Web Application — React Frontend + Express API
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: energy-intelligence
+  labels:
+    app: web-app
+    app.kubernetes.io/part-of: energy-intelligence
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        app.kubernetes.io/part-of: energy-intelligence
+    spec:
+      containers:
+        - name: web-app
+          image: ghcr.io/nmohamaya/energy-intelligence/web-app:latest
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: energy-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: energy-db-secret
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/dashboard
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/dashboard
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/dashboard
+              port: 5000
+            failureThreshold: 30
+            periodSeconds: 2
+      # Pod disruption budget-friendly: allow graceful shutdown
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app
+  namespace: energy-intelligence
+  labels:
+    app: web-app
+spec:
+  selector:
+    app: web-app
+  ports:
+    - port: 80
+      targetPort: 5000
+      protocol: TCP
+  type: ClusterIP

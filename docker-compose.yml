@@ -1,0 +1,115 @@
+# =============================================================================
+# Energy Intelligence — Local Development Stack
+#
+# Usage:
+#   docker compose up --build        # Start all services
+#   docker compose up -d             # Start in background
+#   docker compose logs -f           # Tail logs
+#   docker compose down              # Stop and remove containers
+#
+# Architecture:
+#   ┌─────────────────┐     ┌──────────────────────┐     ┌──────────────┐
+#   │   web-app        │────▶│  prediction-service   │     │  timescaledb  │
+#   │  (React + Node)  │     │  (FastAPI + sklearn)  │     │  (PostgreSQL) │
+#   │   :5000          │     │   :8001               │     │   :5432       │
+#   └─────────────────┘     └──────────────────────┘     └──────────────┘
+#          │                          │                          │
+#          └──────────────────────────┴──────────────────────────┘
+#                              shared network
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Main Web Application — React frontend + Express API
+  # ---------------------------------------------------------------------------
+  web-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: energy-web-app
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: production
+      PREDICTION_SERVICE_URL: http://prediction-service:8001
+      DATABASE_URL: postgresql://energy:energy_secret@timescaledb:5432/energy_intelligence
+    depends_on:
+      prediction-service:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - energy-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Prediction Microservice — Anomaly Detection + Failure Prediction
+  # ---------------------------------------------------------------------------
+  prediction-service:
+    build:
+      context: ./services/prediction-service
+      dockerfile: Dockerfile
+    container_name: energy-prediction
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: "8001"
+      MODEL_VERSION: "1.0.0"
+      LOG_LEVEL: "INFO"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - energy-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # TimescaleDB — Time-series optimized PostgreSQL
+  # In production: managed instance (AWS RDS, GCP Cloud SQL, or Timescale Cloud)
+  # ---------------------------------------------------------------------------
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: energy-timescaledb
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: energy_intelligence
+      POSTGRES_USER: energy
+      POSTGRES_PASSWORD: energy_secret
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U energy -d energy_intelligence"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - energy-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+networks:
+  energy-net:
+    driver: bridge
+
+volumes:
+  timescale-data:
+    driver: local

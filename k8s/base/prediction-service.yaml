@@ -1,0 +1,81 @@
+# =============================================================================
+# Prediction Microservice — FastAPI + scikit-learn
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prediction-service
+  namespace: energy-intelligence
+  labels:
+    app: prediction-service
+    app.kubernetes.io/part-of: energy-intelligence
+    app.kubernetes.io/component: ml-inference
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: prediction-service
+  template:
+    metadata:
+      labels:
+        app: prediction-service
+        app.kubernetes.io/part-of: energy-intelligence
+    spec:
+      containers:
+        - name: prediction-service
+          image: ghcr.io/nmohamaya/energy-intelligence/prediction-service:latest
+          ports:
+            - containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: energy-config
+          env:
+            - name: PORT
+              value: "8001"
+          resources:
+            # ML inference needs more CPU/memory than the web app
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            # Model loading can take a few seconds
+            failureThreshold: 30
+            periodSeconds: 2
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prediction-service
+  namespace: energy-intelligence
+  labels:
+    app: prediction-service
+spec:
+  selector:
+    app: prediction-service
+  ports:
+    - port: 8001
+      targetPort: 8001
+      protocol: TCP
+  type: ClusterIP
