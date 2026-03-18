@@ -1,0 +1,111 @@
+# =============================================================================
+# Build & Push — Docker images to GitHub Container Registry
+# Triggers after CI workflow succeeds on main, and on version tags
+#
+# Architecture note: "Build once, deploy many"
+# The same image artifact tagged with the git SHA flows from CI → staging → production.
+# We never rebuild between environments — only the configuration changes.
+# =============================================================================
+name: Build & Push Images
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*.*.*"]
+
+env:
+  REGISTRY: ghcr.io
+  WEB_APP_IMAGE: ghcr.io/${{ github.repository }}/web-app
+  PREDICTION_IMAGE: ghcr.io/${{ github.repository }}/prediction-service
+
+jobs:
+  build-web-app:
+    name: Build Web App Image
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.WEB_APP_IMAGE }}
+          tags: |
+            # Tag with git SHA (immutable, traceable)
+            type=sha,prefix=
+            # Tag as 'latest' on main branch pushes
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # Tag with semver on version tags (v1.0.0 → 1.0.0)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push web-app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer caching via registry — speeds up rebuilds from ~3min to ~30sec
+          cache-from: type=registry,ref=${{ env.WEB_APP_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.WEB_APP_IMAGE }}:buildcache,mode=max
+
+  build-prediction-service:
+    name: Build Prediction Service Image
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.PREDICTION_IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push prediction-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./services/prediction-service
+          file: ./services/prediction-service/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.PREDICTION_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.PREDICTION_IMAGE }}:buildcache,mode=max

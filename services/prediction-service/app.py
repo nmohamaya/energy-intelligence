@@ -18,10 +18,8 @@ In production, this service would:
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
-
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sklearn.ensemble import IsolationForest, GradientBoostingRegressor
@@ -353,4 +351,4 @@ async def batch_predict(telemetry_batch: list[TelemetryInput]):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8001))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # nosec B104 — bind all interfaces is required inside containers
