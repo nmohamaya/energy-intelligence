@@ -62,8 +62,6 @@ Energy Intelligence extends beyond traditional PV monitoring into a full predict
 
 ### Architectural Reasoning
 
-This architecture follows the patterns you'd implement as Head of Engineering at a renewable energy SaaS company:
-
 | Decision | Why It Matters |
 |---|---|
 | **Microservices over monolith** | The ML prediction workload has fundamentally different resource needs (CPU/memory-intensive, Python) than the web server (I/O-bound, Node.js). Separating them allows independent scaling — during peak prediction batch jobs, you scale prediction pods without touching the web tier. |
