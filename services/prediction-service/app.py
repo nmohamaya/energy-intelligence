@@ -18,10 +18,8 @@ In production, this service would:
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
-
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sklearn.ensemble import IsolationForest, GradientBoostingRegressor
