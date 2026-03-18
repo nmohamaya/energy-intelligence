@@ -1,6 +1,6 @@
 # =============================================================================
 # Build & Push — Docker images to GitHub Container Registry
-# Triggers on push to main (after CI passes) and on version tags
+# Triggers after CI workflow succeeds on main, and on version tags
 #
 # Architecture note: "Build once, deploy many"
 # The same image artifact tagged with the git SHA flows from CI → staging → production.
@@ -9,8 +9,11 @@
 name: Build & Push Images
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
+  push:
     tags: ["v*.*.*"]
 
 env:
@@ -22,6 +25,7 @@ jobs:
   build-web-app:
     name: Build Web App Image
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write
@@ -67,6 +71,7 @@ jobs:
   build-prediction-service:
     name: Build Prediction Service Image
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write
