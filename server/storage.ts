@@ -335,4 +335,34 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Conditional storage: use real DB when DATABASE_URL is set, otherwise fall back
+// to in-memory simulation. This lets `npm run dev` work without Docker.
+//
+// We use a lazy-init wrapper to avoid top-level await (tsconfig doesn't allow it).
+// The first call to any storage method triggers the import; after that it's cached.
+
+let _storage: IStorage | null = null;
+
+async function getStorage(): Promise<IStorage> {
+  if (_storage) return _storage;
+
+  if (process.env.DATABASE_URL) {
+    const { DatabaseStorage } = await import("./db/storage.js");
+    _storage = new DatabaseStorage();
+    console.log("Using DatabaseStorage (TimescaleDB)");
+  } else {
+    _storage = new MemStorage();
+    console.log("Using MemStorage (in-memory simulation — no DATABASE_URL set)");
+  }
+  return _storage;
+}
+
+// Proxy that delegates every IStorage method to the lazily-initialized backend
+export const storage: IStorage = {
+  getDashboardData: () => getStorage().then((s) => s.getDashboardData()),
+  getAssets: (filters) => getStorage().then((s) => s.getAssets(filters)),
+  getAssetById: (id) => getStorage().then((s) => s.getAssetById(id)),
+  getPredictions: (filters) => getStorage().then((s) => s.getPredictions(filters)),
+  getDigitalTwinData: (assetId) => getStorage().then((s) => s.getDigitalTwinData(assetId)),
+  getAnalyticsData: () => getStorage().then((s) => s.getAnalyticsData()),
+};
