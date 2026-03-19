@@ -12,7 +12,7 @@
  *   implementations without changing any route code.
  */
 
-import { eq, ilike, or, sql, desc, asc } from "drizzle-orm";
+import { eq, ilike, or, and, desc, asc } from "drizzle-orm";
 import { db } from "./index.js";
 import * as schema from "./schema.js";
 import type { IStorage } from "../storage.js";
@@ -80,9 +80,7 @@ export class DatabaseStorage implements IStorage {
     const query = db.select().from(schema.assets);
     const rows =
       conditions.length > 0
-        ? await query.where(
-            conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`),
-          )
+        ? await query.where(and(...conditions))
         : await query;
 
     return rows.map(toAsset);
@@ -99,7 +97,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPredictions(filters?: { risk?: string }): Promise<Prediction[]> {
-    const query = db.select().from(schema.predictions);
+    const query = db
+      .select({
+        externalId: schema.predictions.externalId,
+        assetExternalId: schema.assets.externalId,
+        assetName: schema.predictions.assetName,
+        component: schema.predictions.component,
+        predictedFailureDate: schema.predictions.predictedFailureDate,
+        confidence: schema.predictions.confidence,
+        riskLevel: schema.predictions.riskLevel,
+        recommendedAction: schema.predictions.recommendedAction,
+      })
+      .from(schema.predictions)
+      .innerJoin(schema.assets, eq(schema.predictions.assetId, schema.assets.id));
 
     const rows = filters?.risk
       ? await query.where(
@@ -112,7 +122,7 @@ export class DatabaseStorage implements IStorage {
 
     return rows.map((row) => ({
       id: row.externalId,
-      assetId: row.externalId, // Will be resolved below
+      assetId: row.assetExternalId,
       assetName: row.assetName,
       component: row.component,
       predictedFailureDate: row.predictedFailureDate,
@@ -163,16 +173,24 @@ export class DatabaseStorage implements IStorage {
         performanceRatio: a.performanceRatio,
       }));
 
-    // Recent alerts from DB
+    // Recent alerts from DB (join to resolve asset external ID)
     const alertRows = await db
-      .select()
+      .select({
+        externalId: schema.alerts.externalId,
+        assetExternalId: schema.assets.externalId,
+        assetName: schema.alerts.assetName,
+        severity: schema.alerts.severity,
+        message: schema.alerts.message,
+        timestamp: schema.alerts.timestamp,
+      })
       .from(schema.alerts)
+      .innerJoin(schema.assets, eq(schema.alerts.assetId, schema.assets.id))
       .orderBy(desc(schema.alerts.timestamp))
       .limit(7);
 
     const recentAlerts = alertRows.map((row) => ({
       id: row.externalId,
-      assetId: row.externalId,
+      assetId: row.assetExternalId,
       assetName: row.assetName,
       severity: row.severity,
       message: row.message,

@@ -341,20 +341,25 @@ export class MemStorage implements IStorage {
 // We use a lazy-init wrapper to avoid top-level await (tsconfig doesn't allow it).
 // The first call to any storage method triggers the import; after that it's cached.
 
-let _storage: IStorage | null = null;
+// Cache the initialization promise (not just the result) to prevent race conditions.
+// If two requests arrive simultaneously before init completes, both await the SAME
+// promise instead of each creating their own storage instance.
+let _storagePromise: Promise<IStorage> | null = null;
 
-async function getStorage(): Promise<IStorage> {
-  if (_storage) return _storage;
-
-  if (process.env.DATABASE_URL) {
-    const { DatabaseStorage } = await import("./db/storage.js");
-    _storage = new DatabaseStorage();
-    console.log("Using DatabaseStorage (TimescaleDB)");
-  } else {
-    _storage = new MemStorage();
-    console.log("Using MemStorage (in-memory simulation — no DATABASE_URL set)");
+function getStorage(): Promise<IStorage> {
+  if (!_storagePromise) {
+    _storagePromise = (async () => {
+      if (process.env.DATABASE_URL) {
+        const { DatabaseStorage } = await import("./db/storage.js");
+        console.log("Using DatabaseStorage (TimescaleDB)");
+        return new DatabaseStorage();
+      } else {
+        console.log("Using MemStorage (in-memory simulation — no DATABASE_URL set)");
+        return new MemStorage();
+      }
+    })();
   }
-  return _storage;
+  return _storagePromise;
 }
 
 // Proxy that delegates every IStorage method to the lazily-initialized backend

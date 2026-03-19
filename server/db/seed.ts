@@ -73,22 +73,12 @@ async function seed() {
   // We'll use db:push via CLI instead. For now, just seed data.
 
   console.log("Clearing existing data...");
-  await db.delete(schema.dispatchSchedule);
-  await db.delete(schema.lossBreakdown);
-  await db.delete(schema.curtailmentHistory);
-  await db.delete(schema.productionHistory);
-  await db.delete(schema.predictions);
-  await db.delete(schema.alerts);
-  await db.delete(schema.assets);
-
-  // Reset serial sequences so IDs start from 1
-  await db.execute(sql`ALTER SEQUENCE assets_id_seq RESTART WITH 1`);
-  await db.execute(sql`ALTER SEQUENCE alerts_id_seq RESTART WITH 1`);
-  await db.execute(sql`ALTER SEQUENCE predictions_id_seq RESTART WITH 1`);
-  await db.execute(sql`ALTER SEQUENCE production_history_id_seq RESTART WITH 1`);
-  await db.execute(sql`ALTER SEQUENCE curtailment_history_id_seq RESTART WITH 1`);
-  await db.execute(sql`ALTER SEQUENCE loss_breakdown_id_seq RESTART WITH 1`);
-  await db.execute(sql`ALTER SEQUENCE dispatch_schedule_id_seq RESTART WITH 1`);
+  // TRUNCATE is faster than DELETE and RESTART IDENTITY resets serial sequences
+  // automatically. CASCADE handles foreign key dependencies between tables.
+  await db.execute(sql`TRUNCATE TABLE
+    dispatch_schedule, loss_breakdown, curtailment_history,
+    production_history, predictions, alerts, assets
+    RESTART IDENTITY CASCADE`);
 
   // --- 1. Seed Assets ---
   console.log("Seeding 20 assets...");

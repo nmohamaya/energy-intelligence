@@ -22,7 +22,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 // --- Enums ---
-// PostgreSQL enums map to CHECK constraints — the DB enforces valid values.
+// PostgreSQL enums are distinct types (CREATE TYPE ... AS ENUM) — the DB enforces valid values.
 
 export const assetTypeEnum = pgEnum("asset_type", [
   "Solar",
@@ -109,8 +109,8 @@ export const predictions = pgTable("predictions", {
 });
 
 /**
- * Hourly production data. Will be converted to a TimescaleDB hypertable
- * in init.sql for automatic time-based partitioning.
+ * Hourly production data. Can be converted to a TimescaleDB hypertable
+ * for automatic time-based partitioning when data volume warrants it.
  */
 export const productionHistory = pgTable("production_history", {
   id: serial("id").primaryKey(),
@@ -121,8 +121,8 @@ export const productionHistory = pgTable("production_history", {
 });
 
 /**
- * Daily curtailment data. Will be converted to a TimescaleDB hypertable
- * in init.sql for time-based partitioning.
+ * Daily curtailment data. Can be converted to a TimescaleDB hypertable
+ * for time-based partitioning when data volume warrants it.
  */
 export const curtailmentHistory = pgTable("curtailment_history", {
   id: serial("id").primaryKey(),
