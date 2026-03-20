@@ -1,8 +1,10 @@
 import { createApp, log } from "./app";
+import { setupWebSocket } from "./websocket";
 import { serveStatic } from "./static";
 
 (async () => {
   const { app, httpServer } = await createApp();
+  setupWebSocket(httpServer);
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route

@@ -3,3 +3,10 @@ dist/
 .env
 *.log
 .DS_Store
+
+# Claude Code project instructions (local only, no other devs currently)
+CLAUDE.md
+.claude/
+
+# Teaching/lesson materials (personal learning docs)
+docs/lessons/
