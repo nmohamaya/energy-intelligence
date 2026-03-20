@@ -7,9 +7,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar,
 } from "recharts";
-import { Zap, Server, CheckCircle2, BoltIcon, DollarSign, AlertTriangle, AlertCircle, Info, Clock } from "lucide-react";
+import { Zap, Server, CheckCircle2, BoltIcon, DollarSign, AlertTriangle, AlertCircle, Info, Clock, Wifi, WifiOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
+import { useWebSocket } from "@/hooks/use-websocket";
 
 const CHART_COLORS = [
   "hsl(142, 71%, 45%)",
@@ -51,11 +52,56 @@ function SeverityIcon({ severity }: { severity: string }) {
   return <Info className="w-3.5 h-3.5 text-blue-500" />;
 }
 
+function ConnectionIndicator({ status }: { status: string }) {
+  if (status === "connected") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-emerald-500">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+        </span>
+        <Wifi className="w-3.5 h-3.5" />
+        <span>Live</span>
+      </div>
+    );
+  }
+  if (status === "connecting") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-amber-500">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-pulse relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+        </span>
+        <Wifi className="w-3.5 h-3.5" />
+        <span>Connecting…</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="relative flex h-2 w-2">
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground" />
+      </span>
+      <WifiOff className="w-3.5 h-3.5" />
+      <span>Offline</span>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/dashboard"],
     refetchInterval: 60000,
   });
+
+  const { status: wsStatus, liveAlerts } = useWebSocket();
+
+  // Merge live WebSocket alerts with REST alerts (live alerts take priority at top)
+  const mergedAlerts = data?.recentAlerts
+    ? [
+        ...liveAlerts.filter((la) => !data.recentAlerts.some((ra) => ra.id === la.id)),
+        ...data.recentAlerts,
+      ].slice(0, 7)
+    : data?.recentAlerts;
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -65,9 +111,12 @@ export default function Dashboard() {
           <h1 className="text-xl font-semibold" data-testid="text-page-title">Portfolio Overview</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Real-time monitoring across all renewable assets</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Clock className="w-3.5 h-3.5" />
-          <span>Last updated: {data ? formatDistanceToNow(new Date(), { addSuffix: true }) : "—"}</span>
+        <div className="flex items-center gap-3">
+          <ConnectionIndicator status={wsStatus} />
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="w-3.5 h-3.5" />
+            <span>Last updated: {data ? formatDistanceToNow(new Date(), { addSuffix: true }) : "—"}</span>
+          </div>
         </div>
       </div>
 
@@ -194,7 +243,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-2">
-                {data?.recentAlerts.map((alert) => (
+                {mergedAlerts?.map((alert) => (
                   <div
                     key={alert.id}
                     className="flex items-start gap-3 p-2.5 rounded-md bg-muted/50"
