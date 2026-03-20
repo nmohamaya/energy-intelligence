@@ -59,7 +59,7 @@ export async function registerRoutes(
 
     if (risk && !validRiskLevels.includes(risk)) {
       return res.status(400).json({
-        message: "Invalid risk level. Must be one of: " + validRiskLevels.join(", "),
+        message: "Invalid risk. Must be one of: " + validRiskLevels.join(", "),
       });
     }
 
