@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { MemStorage } from "../storage";
-import type { Asset, DashboardData, DigitalTwinData, AnalyticsData, Prediction } from "../../shared/schema";
 
 describe("MemStorage", () => {
   let storage: MemStorage;
@@ -207,7 +206,7 @@ describe("MemStorage", () => {
     it("has 5 loss categories", async () => {
       const { lossBreakdown } = await storage.getAnalyticsData();
       expect(lossBreakdown).toHaveLength(5);
-      expect(lossBreakdown.every((l) => l.percentage > 0)).toBe(true);
+      expect(lossBreakdown.every((l: { percentage: number }) => l.percentage > 0)).toBe(true);
     });
 
     it("has 7 days × 24 hours = 168 dispatch entries", async () => {
@@ -219,7 +218,7 @@ describe("MemStorage", () => {
       const { dispatchSchedule } = await storage.getAnalyticsData();
       const validStatuses = ["dispatched", "curtailed", "standby"];
       expect(
-        dispatchSchedule.every((d) => validStatuses.includes(d.status)),
+        dispatchSchedule.every((d: { status: string }) => validStatuses.includes(d.status)),
       ).toBe(true);
     });
   });

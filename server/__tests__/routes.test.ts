@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../app";
 import type { Express } from "express";
+
+// Force MemStorage regardless of environment so tests never hit a real DB
+vi.stubEnv("DATABASE_URL", "");
 
 describe("API Routes", () => {
   let app: Express;

@@ -6,7 +6,6 @@ import {
   assetTypeEnum,
   assetStatusEnum,
   riskLevelEnum,
-  alertSeverityEnum,
 } from "../schema";
 
 describe("Zod Schemas", () => {
