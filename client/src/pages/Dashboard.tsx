@@ -10,7 +10,7 @@ import {
 import { Zap, Server, CheckCircle2, BoltIcon, DollarSign, AlertTriangle, AlertCircle, Info, Clock, Wifi, WifiOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
-import { useWebSocket } from "@/hooks/use-websocket";
+import { useWebSocket, type ConnectionStatus } from "@/hooks/use-websocket";
 
 const CHART_COLORS = [
   "hsl(142, 71%, 45%)",
@@ -52,7 +52,7 @@ function SeverityIcon({ severity }: { severity: string }) {
   return <Info className="w-3.5 h-3.5 text-blue-500" />;
 }
 
-function ConnectionIndicator({ status }: { status: string }) {
+function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
   if (status === "connected") {
     return (
       <div className="flex items-center gap-1.5 text-xs text-emerald-500">
@@ -88,20 +88,23 @@ function ConnectionIndicator({ status }: { status: string }) {
 }
 
 export default function Dashboard() {
-  const { data, isLoading } = useQuery<DashboardData>({
-    queryKey: ["/api/dashboard"],
-    refetchInterval: 60000,
-  });
-
   const { status: wsStatus, liveAlerts } = useWebSocket();
 
-  // Merge live WebSocket alerts with REST alerts (live alerts take priority at top)
-  const mergedAlerts = data?.recentAlerts
-    ? [
-        ...liveAlerts.filter((la) => !data.recentAlerts.some((ra) => ra.id === la.id)),
-        ...data.recentAlerts,
-      ].slice(0, 7)
-    : data?.recentAlerts;
+  const { data, isLoading } = useQuery<DashboardData>({
+    queryKey: ["/api/dashboard"],
+    // Only poll when WebSocket is disconnected; WS invalidation handles the rest
+    refetchInterval: wsStatus === "connected" ? false : 60000,
+  });
+
+  // Merge live WebSocket alerts with REST alerts (live alerts show even before REST loads)
+  const mergedAlerts = (() => {
+    const restAlerts = data?.recentAlerts ?? [];
+    const liveOnly = liveAlerts.filter(
+      (la) => !restAlerts.some((ra) => ra.id === la.id),
+    );
+    const combined = [...liveOnly, ...restAlerts].slice(0, 7);
+    return combined.length > 0 ? combined : undefined;
+  })();
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">

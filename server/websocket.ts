@@ -12,14 +12,24 @@
  *     { type: "heartbeat",    timestamp: string }
  *
  *   Client → Server:
- *     { type: "subscribe",   assetIds: string[] }
+ *     { type: "subscribe",   assetIds: string[] }  — empty array = return to broadcast mode
  *     { type: "unsubscribe", assetIds: string[] }
  */
 
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "http";
-import { log } from "./index";
 import { storage } from "./storage";
+
+// Inline logger to avoid circular dependency with ./index
+function log(message: string, source = "ws") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
 
 // Each connected client tracks which asset IDs it cares about.
 // An empty set means "all assets" (broadcast mode).
@@ -31,6 +41,7 @@ interface ClientState {
 const clients = new Map<WebSocket, ClientState>();
 
 let broadcastInterval: ReturnType<typeof setInterval> | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Initialise the WebSocket server on the existing HTTP server.
@@ -42,7 +53,10 @@ export function setupWebSocket(server: Server): WebSocketServer {
   wss.on("connection", (ws) => {
     const state: ClientState = { ws, subscriptions: new Set() };
     clients.set(ws, state);
-    log(`WebSocket client connected (${clients.size} total)`, "ws");
+    log(`Client connected (${clients.size} total)`);
+
+    // Start intervals on first connection
+    startBroadcastLoop();
 
     // Send immediate heartbeat so client knows connection is live
     send(ws, { type: "heartbeat", timestamp: new Date().toISOString() });
@@ -58,19 +72,29 @@ export function setupWebSocket(server: Server): WebSocketServer {
 
     ws.on("close", () => {
       clients.delete(ws);
-      log(`WebSocket client disconnected (${clients.size} total)`, "ws");
+      log(`Client disconnected (${clients.size} total)`);
+
+      // Stop intervals when no clients remain
+      if (clients.size === 0) {
+        stopBroadcastLoop();
+      }
     });
 
     ws.on("error", (err) => {
-      log(`WebSocket error: ${err.message}`, "ws");
+      log(`Error: ${err.message}`);
       clients.delete(ws);
+      if (clients.size === 0) {
+        stopBroadcastLoop();
+      }
     });
   });
 
-  // Start broadcasting when first client connects, stop when none remain
-  startBroadcastLoop();
+  // Clean up intervals when server closes
+  wss.on("close", () => {
+    stopBroadcastLoop();
+  });
 
-  log("WebSocket server ready on /ws", "ws");
+  log("Server ready on /ws");
   return wss;
 }
 
@@ -81,25 +105,34 @@ function send(ws: WebSocket, data: unknown) {
 }
 
 function handleClientMessage(client: ClientState, msg: Record<string, unknown>) {
-  const assetIds = msg.assetIds;
-  if (!Array.isArray(assetIds)) return;
-
   if (msg.type === "subscribe") {
+    const assetIds = msg.assetIds;
+    if (!Array.isArray(assetIds)) return;
+
+    // Empty array = clear subscriptions (return to broadcast mode)
+    if (assetIds.length === 0) {
+      client.subscriptions.clear();
+      log("Client cleared subscriptions (broadcast mode)");
+      return;
+    }
+
     for (const id of assetIds) {
       if (typeof id === "string") client.subscriptions.add(id);
     }
-    log(`Client subscribed to ${client.subscriptions.size} assets`, "ws");
+    log(`Client subscribed to ${client.subscriptions.size} assets`);
   } else if (msg.type === "unsubscribe") {
+    const assetIds = msg.assetIds;
+    if (!Array.isArray(assetIds)) return;
+
     for (const id of assetIds) {
       if (typeof id === "string") client.subscriptions.delete(id);
     }
-    log(`Client unsubscribed, now tracking ${client.subscriptions.size} assets`, "ws");
+    log(`Client unsubscribed, now tracking ${client.subscriptions.size} assets`);
   }
 }
 
 /**
- * Every 5 seconds: fetch all assets, pick a random subset, and broadcast
- * updated telemetry with small random deltas. Also sends occasional alerts.
+ * Start broadcast + heartbeat intervals. Only runs when clients are connected.
  */
 function startBroadcastLoop() {
   if (broadcastInterval) return;
@@ -111,8 +144,14 @@ function startBroadcastLoop() {
       const assets = await storage.getAssets();
       // Pick 3–6 random assets to "update" each tick
       const count = Math.min(assets.length, 3 + Math.floor(Math.random() * 4));
-      const shuffled = [...assets].sort(() => Math.random() - 0.5);
-      const updates = shuffled.slice(0, count);
+
+      // Partial Fisher-Yates shuffle: unbiased, O(count) instead of O(n log n)
+      const assetsCopy = [...assets];
+      for (let i = 0; i < count; i++) {
+        const j = i + Math.floor(Math.random() * (assetsCopy.length - i));
+        [assetsCopy[i], assetsCopy[j]] = [assetsCopy[j], assetsCopy[i]];
+      }
+      const updates = assetsCopy.slice(0, count);
 
       for (const asset of updates) {
         const update = {
@@ -157,17 +196,31 @@ function startBroadcastLoop() {
         broadcast(alert);
       }
     } catch (err) {
-      log(`Broadcast error: ${err instanceof Error ? err.message : err}`, "ws");
+      log(`Broadcast error: ${err instanceof Error ? err.message : err}`);
     }
   }, 5_000);
 
   // Heartbeat every 30 seconds
-  setInterval(() => {
+  heartbeatInterval = setInterval(() => {
     const heartbeat = { type: "heartbeat", timestamp: new Date().toISOString() };
     clients.forEach((client) => {
       send(client.ws, heartbeat);
     });
   }, 30_000);
+}
+
+/**
+ * Stop broadcast + heartbeat intervals when no clients remain.
+ */
+function stopBroadcastLoop() {
+  if (broadcastInterval) {
+    clearInterval(broadcastInterval);
+    broadcastInterval = null;
+  }
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
 }
 
 /**

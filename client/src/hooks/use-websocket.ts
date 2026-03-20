@@ -5,7 +5,7 @@
  * - Auto-connects on mount, auto-reconnects on disconnect (with backoff)
  * - Exposes connection status for UI indicators
  * - Provides latest asset updates and alerts via state
- * - Integrates with TanStack Query cache invalidation
+ * - Integrates with TanStack Query cache invalidation (debounced)
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -55,6 +55,9 @@ interface UseWebSocketReturn {
 const BASE_DELAY = 1_000;
 const MAX_DELAY = 30_000;
 
+// Debounce invalidation: at most once per 2 seconds
+const INVALIDATION_DEBOUNCE_MS = 2_000;
+
 function getWsUrl(): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/ws`;
@@ -66,11 +69,22 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const wsRef = useRef<WebSocket | null>(null);
   const retryCount = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const invalidationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevAssetIds = useRef<string[]>([]);
 
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [assetUpdates, setAssetUpdates] = useState<Map<string, AssetUpdate>>(new Map());
   const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
+
+  // Debounced query invalidation — collapses multiple WS messages into one refetch
+  const scheduleInvalidation = useCallback(() => {
+    if (invalidationTimer.current) return; // already scheduled
+    invalidationTimer.current = setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      invalidationTimer.current = null;
+    }, INVALIDATION_DEBOUNCE_MS);
+  }, [queryClient]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -84,13 +98,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
               next.set(msg.data.assetId, msg.data);
               return next;
             });
-            // Invalidate dashboard data so TanStack Query refetches with fresh KPIs
-            queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+            scheduleInvalidation();
             break;
 
           case "alert":
             setLiveAlerts((prev) => [msg.data, ...prev].slice(0, maxAlerts));
-            queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+            scheduleInvalidation();
             break;
 
           case "heartbeat":
@@ -105,7 +118,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         // Ignore non-JSON messages (e.g. Vite HMR)
       }
     },
-    [queryClient, maxAlerts],
+    [maxAlerts, scheduleInvalidation],
   );
 
   const connect = useCallback(() => {
@@ -148,6 +161,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     return () => {
       // Clean up on unmount
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (invalidationTimer.current) clearTimeout(invalidationTimer.current);
       if (wsRef.current) {
         wsRef.current.onclose = null; // Prevent reconnect on intentional close
         wsRef.current.close();
@@ -155,11 +169,32 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     };
   }, [connect]);
 
-  // Re-send subscription when assetIds change
+  // Diff subscriptions when assetIds change and send subscribe/unsubscribe
   useEffect(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN && assetIds.length > 0) {
-      wsRef.current.send(JSON.stringify({ type: "subscribe", assetIds }));
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const prev = new Set(prevAssetIds.current);
+    const curr = new Set(assetIds);
+
+    // If switching to empty (broadcast mode), send empty subscribe to clear server state
+    if (assetIds.length === 0 && prevAssetIds.current.length > 0) {
+      ws.send(JSON.stringify({ type: "subscribe", assetIds: [] }));
+    } else {
+      // Unsubscribe removed IDs
+      const removed = prevAssetIds.current.filter((id) => !curr.has(id));
+      if (removed.length > 0) {
+        ws.send(JSON.stringify({ type: "unsubscribe", assetIds: removed }));
+      }
+
+      // Subscribe new IDs
+      const added = assetIds.filter((id) => !prev.has(id));
+      if (added.length > 0) {
+        ws.send(JSON.stringify({ type: "subscribe", assetIds: added }));
+      }
     }
+
+    prevAssetIds.current = assetIds;
   }, [assetIds]);
 
   return { status, assetUpdates, liveAlerts, lastHeartbeat };
