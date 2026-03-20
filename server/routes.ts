@@ -1,6 +1,16 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import type { Server } from "http";
 import { storage } from "./storage";
+import {
+  assetTypeEnum,
+  assetStatusEnum,
+  riskLevelEnum,
+} from "@shared/schema";
+
+// Valid enum values for query param validation
+const validAssetTypes: readonly string[] = assetTypeEnum.options;
+const validAssetStatuses: readonly string[] = assetStatusEnum.options;
+const validRiskLevels: readonly string[] = riskLevelEnum.options;
 
 export async function registerRoutes(
   httpServer: Server,
@@ -18,6 +28,18 @@ export async function registerRoutes(
     const type = req.query.type as string | undefined;
     const status = req.query.status as string | undefined;
     const search = req.query.search as string | undefined;
+
+    if (type && !validAssetTypes.includes(type)) {
+      return res.status(400).json({
+        message: "Invalid type. Must be one of: " + validAssetTypes.join(", "),
+      });
+    }
+    if (status && !validAssetStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid status. Must be one of: " + validAssetStatuses.join(", "),
+      });
+    }
+
     const data = await storage.getAssets({ type, status, search });
     res.json(data);
   });
@@ -34,6 +56,13 @@ export async function registerRoutes(
   // Predictive maintenance predictions
   app.get("/api/predictions", async (req, res) => {
     const risk = req.query.risk as string | undefined;
+
+    if (risk && !validRiskLevels.includes(risk)) {
+      return res.status(400).json({
+        message: "Invalid risk level. Must be one of: " + validRiskLevels.join(", "),
+      });
+    }
+
     const data = await storage.getPredictions({ risk });
     res.json(data);
   });
