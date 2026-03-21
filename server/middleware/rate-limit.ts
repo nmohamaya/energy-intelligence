@@ -5,7 +5,7 @@
  *
  * In C++ terms, this is a functor factory. Each call to createLimiter()
  * returns a new function object that:
- * 1. Tracks a sliding window counter per IP address (like a token bucket)
+ * 1. Tracks a fixed-window request counter per IP address using express-rate-limit's default in-memory store
  * 2. If the counter exceeds the limit, returns 429 and stops the chain
  * 3. Otherwise, calls next() to pass the request to the route handler
  *
@@ -20,7 +20,12 @@
  */
 
 import rateLimit from "express-rate-limit";
-import { log } from "../app";
+
+// Inline logger to avoid circular dependency (app.ts → routes.ts → rate-limit.ts → app.ts)
+function log(message: string, source = "rate-limit") {
+  const timestamp = new Date().toLocaleTimeString("en-US", { hour12: true });
+  console.log(`${timestamp} [${source}] ${message}`);
+}
 
 interface LimiterConfig {
   windowMs: number;
@@ -52,7 +57,7 @@ function createLimiter({ windowMs, max, name }: LimiterConfig) {
 
 // --- Pre-configured limiters for each endpoint tier ---
 
-/** Dashboard + asset endpoints: 60 requests/minute */
+/** Dashboard endpoint: 60 requests/minute */
 export const dashboardLimiter = createLimiter({
   windowMs: 60_000,
   max: 60,

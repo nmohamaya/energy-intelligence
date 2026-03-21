@@ -30,6 +30,11 @@ export async function createApp() {
   const app = express();
   const httpServer = createServer(app);
 
+  // Trust first proxy (Nginx Ingress / load balancer) so req.ip reflects
+  // the real client IP from X-Forwarded-For, not the proxy's IP.
+  // Critical for rate limiting — without this, all users share one bucket.
+  app.set("trust proxy", 1);
+
   app.use(
     express.json({
       verify: (req, _res, buf) => {
