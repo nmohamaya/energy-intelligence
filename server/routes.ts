@@ -6,6 +6,7 @@ import {
   assetStatusEnum,
   riskLevelEnum,
 } from "@shared/schema";
+import { apiLimiter, dashboardLimiter, predictionLimiter } from "./middleware/rate-limit";
 
 // Valid enum values for query param validation
 const validAssetTypes: readonly string[] = assetTypeEnum.options;
@@ -17,8 +18,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Dashboard — KPIs + chart data
-  app.get("/api/dashboard", async (_req, res) => {
+  // Apply catch-all rate limit to all /api routes (120 req/min)
+  app.use("/api", apiLimiter);
+
+  // Dashboard — KPIs + chart data (tighter limit: 60 req/min)
+  app.get("/api/dashboard", dashboardLimiter, async (_req, res) => {
     const data = await storage.getDashboardData();
     res.json(data);
   });
@@ -53,8 +57,8 @@ export async function registerRoutes(
     res.json(data);
   });
 
-  // Predictive maintenance predictions
-  app.get("/api/predictions", async (req, res) => {
+  // Predictive maintenance predictions (tighter limit: 30 req/min)
+  app.get("/api/predictions", predictionLimiter, async (req, res) => {
     const risk = req.query.risk as string | undefined;
 
     if (risk && !validRiskLevels.includes(risk)) {
