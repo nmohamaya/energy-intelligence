@@ -16,7 +16,7 @@
  * - Passes const refs (props) to child components (markers, filter bar, detail panel)
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import type { Asset } from "@shared/schema";
@@ -185,7 +185,7 @@ function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => voi
 function FitBounds({ assets }: { assets: Asset[] }) {
   const map = useMap();
 
-  useMemo(() => {
+  useEffect(() => {
     if (assets.length === 0) return;
     const lats = assets.map((a) => a.latitude);
     const lngs = assets.map((a) => a.longitude);
@@ -198,7 +198,7 @@ function FitBounds({ assets }: { assets: Asset[] }) {
     );
   }, [assets, map]);
 
-  return null; // This component renders nothing — it's just a side effect
+  return null; // This component renders nothing — it's a side-effect-only component
 }
 
 // --- Main Map page ---
@@ -260,7 +260,7 @@ export default function AssetMap() {
             This is like a texture atlas in graphics — the map is made of
             256×256 pixel tiles loaded on demand as you pan/zoom. */}
         <TileLayer
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> &copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
