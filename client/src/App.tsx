@@ -12,6 +12,7 @@ import Fleet from "@/pages/Fleet";
 import Maintenance from "@/pages/Maintenance";
 import DigitalTwin from "@/pages/DigitalTwin";
 import Analytics from "@/pages/Analytics";
+import AssetMap from "@/pages/Map";
 
 function AppRouter() {
   return (
@@ -22,6 +23,7 @@ function AppRouter() {
         <Route path="/maintenance" component={Maintenance} />
         <Route path="/digital-twin" component={DigitalTwin} />
         <Route path="/analytics" component={Analytics} />
+        <Route path="/map" component={AssetMap} />
         <Route component={NotFound} />
       </Switch>
     </AppSidebar>

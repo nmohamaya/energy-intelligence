@@ -5,6 +5,7 @@ import {
   Brain,
   Cpu,
   BarChart3,
+  MapPin,
   Sun,
   Moon,
   ChevronLeft,
@@ -23,6 +24,7 @@ const navItems = [
   { path: "/maintenance", label: "Predictive Maintenance", icon: Brain },
   { path: "/digital-twin", label: "Digital Twin", icon: Cpu },
   { path: "/analytics", label: "Energy Analytics", icon: BarChart3 },
+  { path: "/map", label: "Asset Map", icon: MapPin },
 ];
 
 export function AppSidebar({ children }: { children: React.ReactNode }) {
