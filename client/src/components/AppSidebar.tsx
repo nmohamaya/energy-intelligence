@@ -11,9 +11,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  LogOut,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -30,6 +33,7 @@ const navItems = [
 export function AppSidebar({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -98,6 +102,39 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
 
         {/* Bottom controls */}
         <div className={cn("border-t border-sidebar-border p-2 space-y-1", collapsed && "flex flex-col items-center")}>
+          {/* User profile */}
+          {user && (
+            <div className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-md",
+              collapsed && "justify-center px-0"
+            )}>
+              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/20 text-primary text-xs font-semibold flex-shrink-0">
+                {user.displayName.charAt(0).toUpperCase()}
+              </div>
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate text-sidebar-foreground">
+                    {user.displayName}
+                  </p>
+                  <Badge variant="outline" className="text-[10px] px-1 py-0 mt-0.5">
+                    {user.role}
+                  </Badge>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sign out */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => logout()}
+            className={cn("w-full justify-start gap-3 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50", collapsed && "w-10 h-10 p-0 justify-center")}
+          >
+            <LogOut className="w-4 h-4" />
+            {!collapsed && <span className="text-sm">Sign Out</span>}
+          </Button>
+
           <Button
             variant="ghost"
             size="sm"

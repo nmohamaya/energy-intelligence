@@ -57,6 +57,13 @@ export const dispatchStatusEnum = pgEnum("dispatch_status", [
   "standby",
 ]);
 
+export const userRoleEnum = pgEnum("user_role", [
+  "operator",
+  "engineer",
+  "manager",
+  "admin",
+]);
+
 // --- Tables ---
 
 export const assets = pgTable("assets", {
@@ -143,4 +150,16 @@ export const dispatchSchedule = pgTable("dispatch_schedule", {
   hour: integer("hour").notNull(),
   day: varchar("day", { length: 3 }).notNull(), // Mon, Tue, ...
   status: dispatchStatusEnum("status").notNull(),
+});
+
+// --- Authentication ---
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: varchar("username", { length: 50 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  passwordHash: text("password_hash").notNull(),
+  role: userRoleEnum("role").notNull().default("operator"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

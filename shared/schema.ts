@@ -137,3 +137,35 @@ export const analyticsDataSchema = z.object({
   }),
 });
 export type AnalyticsData = z.infer<typeof analyticsDataSchema>;
+
+// --- Authentication & RBAC ---
+
+// User roles — hierarchical: operator < engineer < manager < admin
+export const userRoleEnum = z.enum(["operator", "engineer", "manager", "admin"]);
+export type UserRole = z.infer<typeof userRoleEnum>;
+
+// User schema — what the API returns (never includes passwordHash)
+export const userSchema = z.object({
+  id: z.number(),
+  username: z.string(),
+  email: z.string(),
+  displayName: z.string(),
+  role: userRoleEnum,
+  createdAt: z.string(),
+});
+export type User = z.infer<typeof userSchema>;
+
+// Login request
+export const loginSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters").max(50),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+});
+export type LoginRequest = z.infer<typeof loginSchema>;
+
+// Register request
+export const registerSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters").max(50),
+  email: z.string().email("Invalid email address"),
+  displayName: z.string().min(1, "Display name is required").max(100),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+});

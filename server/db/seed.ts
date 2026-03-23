@@ -16,6 +16,7 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import * as schema from "./schema.js";
+import { hashPassword } from "../auth/password.js";
 
 const { Pool } = pg;
 
@@ -279,6 +280,21 @@ async function seed() {
 
   await db.insert(schema.dispatchSchedule).values(dispatchRows);
   console.log(`  Inserted ${dispatchRows.length} dispatch schedule rows`);
+
+  // --- 8. Seed Default Admin User ---
+  console.log("Seeding default admin user...");
+  const adminPasswordHash = await hashPassword("admin123!!");
+  await db
+    .insert(schema.users)
+    .values({
+      username: "admin",
+      email: "admin@energy-intelligence.dev",
+      displayName: "System Admin",
+      passwordHash: adminPasswordHash,
+      role: "admin",
+    })
+    .onConflictDoNothing(); // Idempotent — skip if admin already exists
+  console.log("  Default admin created (username: admin, password: admin123!!)");
 
   // --- Done ---
   console.log("\nSeed complete!");

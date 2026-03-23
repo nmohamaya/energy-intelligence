@@ -8,6 +8,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { createServer } from "http";
+import { createSessionMiddleware } from "./auth/session.js";
+import { passport } from "./auth/passport.js";
 
 declare module "http" {
   interface IncomingMessage {
@@ -44,6 +46,11 @@ export async function createApp() {
   );
 
   app.use(express.urlencoded({ extended: false }));
+
+  // Session + Passport — must come before routes so req.user is populated
+  app.use(createSessionMiddleware());
+  app.use(passport.initialize());
+  app.use(passport.session());
 
   app.use((req, res, next) => {
     const start = Date.now();

@@ -15,7 +15,7 @@
 import { eq, ilike, or, and, desc, asc } from "drizzle-orm";
 import { db } from "./index.js";
 import * as schema from "./schema.js";
-import type { IStorage } from "../storage.js";
+import type { IStorage, StoredUser, CreateUserData } from "../storage.js";
 import type {
   Asset,
   DashboardData,
@@ -42,6 +42,19 @@ function toAsset(row: typeof schema.assets.$inferSelect): Asset {
     inverterCount: row.inverterCount,
     currentOutput: row.currentOutput,
     dailyYield: row.dailyYield,
+  };
+}
+
+// Helper: convert DB row to StoredUser shape
+function toStoredUser(row: typeof schema.users.$inferSelect): StoredUser {
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    displayName: row.displayName,
+    passwordHash: row.passwordHash,
+    role: row.role,
+    createdAt: row.createdAt,
   };
 }
 
@@ -277,6 +290,38 @@ export class DatabaseStorage implements IStorage {
         },
       ],
     };
+  }
+
+  async getUserByUsername(username: string): Promise<StoredUser | undefined> {
+    const rows = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.username, username))
+      .limit(1);
+    return rows.length > 0 ? toStoredUser(rows[0]) : undefined;
+  }
+
+  async getUserById(id: number): Promise<StoredUser | undefined> {
+    const rows = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, id))
+      .limit(1);
+    return rows.length > 0 ? toStoredUser(rows[0]) : undefined;
+  }
+
+  async createUser(data: CreateUserData): Promise<StoredUser> {
+    const [row] = await db
+      .insert(schema.users)
+      .values({
+        username: data.username,
+        email: data.email,
+        displayName: data.displayName,
+        passwordHash: data.passwordHash,
+        role: data.role || "operator",
+      })
+      .returning();
+    return toStoredUser(row);
   }
 
   async getAnalyticsData(): Promise<AnalyticsData> {
