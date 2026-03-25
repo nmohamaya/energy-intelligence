@@ -301,6 +301,15 @@ export class DatabaseStorage implements IStorage {
     return rows.length > 0 ? toStoredUser(rows[0]) : undefined;
   }
 
+  async getUserByEmail(email: string): Promise<StoredUser | undefined> {
+    const rows = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, email))
+      .limit(1);
+    return rows.length > 0 ? toStoredUser(rows[0]) : undefined;
+  }
+
   async getUserById(id: number): Promise<StoredUser | undefined> {
     const rows = await db
       .select()

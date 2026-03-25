@@ -18,8 +18,17 @@ import type { RequestHandler } from "express";
 const PgStore = connectPgSimple(session);
 const MemoryStore = memorystore(session);
 
-export function createSessionMiddleware(): RequestHandler {
-  const secret = process.env.SESSION_SECRET || "dev-secret-change-in-production";
+export async function createSessionMiddleware(): Promise<RequestHandler> {
+  // In production, SESSION_SECRET must be set — a hard-coded fallback would
+  // make all sessions trivially forgeable if deployed without the env var.
+  let secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET environment variable is required in production");
+    }
+    secret = "dev-secret-change-in-production";
+  }
+
   const maxAge = 24 * 60 * 60 * 1000; // 24 hours
 
   const commonOptions: session.SessionOptions = {
@@ -36,9 +45,7 @@ export function createSessionMiddleware(): RequestHandler {
 
   if (process.env.DATABASE_URL) {
     // PostgreSQL-backed sessions (persistent across server restarts)
-    // Dynamic import to avoid loading pg pool when not needed
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { pool } = require("../db/index.js");
+    const { pool } = await import("../db/index.js");
 
     return session({
       ...commonOptions,

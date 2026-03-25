@@ -6,7 +6,7 @@ import {
   assetStatusEnum,
   riskLevelEnum,
 } from "@shared/schema";
-import { apiLimiter, dashboardLimiter, predictionLimiter } from "./middleware/rate-limit";
+import { apiLimiter, authLimiter, dashboardLimiter, predictionLimiter } from "./middleware/rate-limit";
 import { authRouter } from "./routes/auth.js";
 import { requireAuth } from "./middleware/auth.js";
 
@@ -20,11 +20,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Auth routes — public (no requireAuth), must be mounted before the catch-all
-  app.use("/api/auth", authRouter);
-
-  // Apply catch-all rate limit to all /api routes (120 req/min)
+  // Apply catch-all rate limit to all /api routes (120 req/min), including auth
   app.use("/api", apiLimiter);
+
+  // Auth routes — public (no requireAuth), with tighter rate limit (20 req/min)
+  app.use("/api/auth", authLimiter, authRouter);
 
   // Dashboard — KPIs + chart data (tighter limit: 60 req/min)
   app.get("/api/dashboard", requireAuth, dashboardLimiter, async (_req, res) => {

@@ -140,7 +140,7 @@ export type AnalyticsData = z.infer<typeof analyticsDataSchema>;
 
 // --- Authentication & RBAC ---
 
-// User roles — hierarchical: operator < engineer < manager < admin
+// User roles — flat RBAC (each role is checked individually, no hierarchy)
 export const userRoleEnum = z.enum(["operator", "engineer", "manager", "admin"]);
 export type UserRole = z.infer<typeof userRoleEnum>;
 

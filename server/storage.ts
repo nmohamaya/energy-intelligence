@@ -303,6 +303,7 @@ export interface IStorage {
 
   // Auth
   getUserByUsername(username: string): Promise<StoredUser | undefined>;
+  getUserByEmail(email: string): Promise<StoredUser | undefined>;
   getUserById(id: number): Promise<StoredUser | undefined>;
   createUser(data: CreateUserData): Promise<StoredUser>;
 }
@@ -365,6 +366,10 @@ export class MemStorage implements IStorage {
     return this.users.find((u) => u.username === username);
   }
 
+  async getUserByEmail(email: string): Promise<StoredUser | undefined> {
+    return this.users.find((u) => u.email === email);
+  }
+
   async getUserById(id: number): Promise<StoredUser | undefined> {
     return this.users.find((u) => u.id === id);
   }
@@ -420,6 +425,7 @@ export const storage: IStorage = {
   getDigitalTwinData: (assetId) => getStorage().then((s) => s.getDigitalTwinData(assetId)),
   getAnalyticsData: () => getStorage().then((s) => s.getAnalyticsData()),
   getUserByUsername: (username) => getStorage().then((s) => s.getUserByUsername(username)),
+  getUserByEmail: (email) => getStorage().then((s) => s.getUserByEmail(email)),
   getUserById: (id) => getStorage().then((s) => s.getUserById(id)),
   createUser: (data) => getStorage().then((s) => s.createUser(data)),
 };

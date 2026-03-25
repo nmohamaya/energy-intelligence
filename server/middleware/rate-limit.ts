@@ -71,6 +71,13 @@ export const predictionLimiter = createLimiter({
   name: "predictions",
 });
 
+/** Auth endpoints: 20 requests/minute (login/register are brute-force targets) */
+export const authLimiter = createLimiter({
+  windowMs: 60_000,
+  max: 20,
+  name: "auth",
+});
+
 /** Catch-all for any /api route: 120 requests/minute */
 export const apiLimiter = createLimiter({
   windowMs: 60_000,

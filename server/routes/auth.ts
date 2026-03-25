@@ -55,6 +55,13 @@ authRouter.post("/register", async (req, res, next) => {
       return;
     }
 
+    // Check if email already in use
+    const existingEmail = await storage.getUserByEmail(email);
+    if (existingEmail) {
+      res.status(409).json({ message: "Email already in use" });
+      return;
+    }
+
     const passwordHash = await hashPassword(password);
     const newUser = await storage.createUser({
       username,

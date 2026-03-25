@@ -48,7 +48,7 @@ export async function createApp() {
   app.use(express.urlencoded({ extended: false }));
 
   // Session + Passport — must come before routes so req.user is populated
-  app.use(createSessionMiddleware());
+  app.use(await createSessionMiddleware());
   app.use(passport.initialize());
   app.use(passport.session());
 

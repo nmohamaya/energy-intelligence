@@ -23,7 +23,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
-import type { User } from "@shared/schema";
+import type { User, UserRole } from "@shared/schema";
 
 interface AuthContextValue {
   user: User | null;
@@ -36,7 +36,7 @@ interface AuthContextValue {
     password: string;
   }) => Promise<User>;
   logout: () => Promise<void>;
-  hasRole: (...roles: string[]) => boolean;
+  hasRole: (...roles: UserRole[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  function hasRole(...roles: string[]): boolean {
+  function hasRole(...roles: UserRole[]): boolean {
     return user != null && roles.includes(user.role);
   }
 

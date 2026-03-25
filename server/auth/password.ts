@@ -26,9 +26,21 @@ export async function comparePassword(
   password: string,
   stored: string,
 ): Promise<boolean> {
-  const [salt, hash] = stored.split(":");
-  const key = (await scryptAsync(password, salt, KEY_LENGTH)) as Buffer;
-  // timingSafeEqual prevents timing attacks — always takes the same time
-  // regardless of how many bytes match (unlike === which short-circuits).
-  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), key);
+  try {
+    const [salt, hash] = stored.split(":");
+    if (!salt || !hash) return false;
+
+    const key = (await scryptAsync(password, salt, KEY_LENGTH)) as Buffer;
+    const hashBuf = Buffer.from(hash, "hex");
+
+    // Length mismatch means corrupted/legacy hash — treat as mismatch
+    if (hashBuf.length !== key.length) return false;
+
+    // timingSafeEqual prevents timing attacks — always takes the same time
+    // regardless of how many bytes match (unlike === which short-circuits).
+    return crypto.timingSafeEqual(hashBuf, key);
+  } catch {
+    // Malformed hash or crypto error — treat as password mismatch, not a 500
+    return false;
+  }
 }

@@ -283,18 +283,23 @@ async function seed() {
 
   // --- 8. Seed Default Admin User ---
   console.log("Seeding default admin user...");
-  const adminPasswordHash = await hashPassword("admin123!!");
-  await db
-    .insert(schema.users)
-    .values({
-      username: "admin",
-      email: "admin@energy-intelligence.dev",
-      displayName: "System Admin",
-      passwordHash: adminPasswordHash,
-      role: "admin",
-    })
-    .onConflictDoNothing(); // Idempotent — skip if admin already exists
-  console.log("  Default admin created (username: admin, password: admin123!!)");
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword && process.env.NODE_ENV === "production") {
+    console.warn("  Skipping admin seed: ADMIN_PASSWORD env var is required in production");
+  } else {
+    const adminPasswordHash = await hashPassword(adminPassword || "admin123!!");
+    await db
+      .insert(schema.users)
+      .values({
+        username: "admin",
+        email: "admin@energy-intelligence.dev",
+        displayName: "System Admin",
+        passwordHash: adminPasswordHash,
+        role: "admin",
+      })
+      .onConflictDoNothing(); // Idempotent — skip if admin already exists
+    console.log("  Default admin user seeded (username: admin)");
+  }
 
   // --- Done ---
   console.log("\nSeed complete!");
