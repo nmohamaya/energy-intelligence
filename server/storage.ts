@@ -8,7 +8,27 @@ import type {
   AssetType,
   AssetStatus,
   RiskLevel,
+  UserRole,
 } from "@shared/schema";
+
+// Full user row (including passwordHash — never send to client)
+export interface StoredUser {
+  id: number;
+  username: string;
+  email: string;
+  displayName: string;
+  passwordHash: string;
+  role: UserRole;
+  createdAt: Date;
+}
+
+export interface CreateUserData {
+  username: string;
+  email: string;
+  displayName: string;
+  passwordHash: string;
+  role?: UserRole;
+}
 
 function randomBetween(min: number, max: number): number {
   return Math.random() * (max - min) + min;
@@ -280,12 +300,20 @@ export interface IStorage {
   getPredictions(filters?: { risk?: string }): Promise<Prediction[]>;
   getDigitalTwinData(assetId: string): Promise<DigitalTwinData | undefined>;
   getAnalyticsData(): Promise<AnalyticsData>;
+
+  // Auth
+  getUserByUsername(username: string): Promise<StoredUser | undefined>;
+  getUserByEmail(email: string): Promise<StoredUser | undefined>;
+  getUserById(id: number): Promise<StoredUser | undefined>;
+  createUser(data: CreateUserData): Promise<StoredUser>;
 }
 
 export class MemStorage implements IStorage {
   private assets: Asset[];
   private alerts: Alert[];
   private predictions: Prediction[];
+  private users: StoredUser[] = [];
+  private nextUserId = 1;
 
   constructor() {
     this.assets = generateAssets();
@@ -333,6 +361,32 @@ export class MemStorage implements IStorage {
   async getAnalyticsData(): Promise<AnalyticsData> {
     return generateAnalyticsData();
   }
+
+  async getUserByUsername(username: string): Promise<StoredUser | undefined> {
+    return this.users.find((u) => u.username === username);
+  }
+
+  async getUserByEmail(email: string): Promise<StoredUser | undefined> {
+    return this.users.find((u) => u.email === email);
+  }
+
+  async getUserById(id: number): Promise<StoredUser | undefined> {
+    return this.users.find((u) => u.id === id);
+  }
+
+  async createUser(data: CreateUserData): Promise<StoredUser> {
+    const user: StoredUser = {
+      id: this.nextUserId++,
+      username: data.username,
+      email: data.email,
+      displayName: data.displayName,
+      passwordHash: data.passwordHash,
+      role: data.role || "operator",
+      createdAt: new Date(),
+    };
+    this.users.push(user);
+    return user;
+  }
 }
 
 // Conditional storage: use real DB when DATABASE_URL is set, otherwise fall back
@@ -370,4 +424,8 @@ export const storage: IStorage = {
   getPredictions: (filters) => getStorage().then((s) => s.getPredictions(filters)),
   getDigitalTwinData: (assetId) => getStorage().then((s) => s.getDigitalTwinData(assetId)),
   getAnalyticsData: () => getStorage().then((s) => s.getAnalyticsData()),
+  getUserByUsername: (username) => getStorage().then((s) => s.getUserByUsername(username)),
+  getUserByEmail: (email) => getStorage().then((s) => s.getUserByEmail(email)),
+  getUserById: (id) => getStorage().then((s) => s.getUserById(id)),
+  createUser: (data) => getStorage().then((s) => s.createUser(data)),
 };

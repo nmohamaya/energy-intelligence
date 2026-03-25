@@ -6,7 +6,9 @@ import {
   assetStatusEnum,
   riskLevelEnum,
 } from "@shared/schema";
-import { apiLimiter, dashboardLimiter, predictionLimiter } from "./middleware/rate-limit";
+import { apiLimiter, authLimiter, dashboardLimiter, predictionLimiter } from "./middleware/rate-limit";
+import { authRouter } from "./routes/auth.js";
+import { requireAuth } from "./middleware/auth.js";
 
 // Valid enum values for query param validation
 const validAssetTypes: readonly string[] = assetTypeEnum.options;
@@ -18,17 +20,20 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Apply catch-all rate limit to all /api routes (120 req/min)
+  // Apply catch-all rate limit to all /api routes (120 req/min), including auth
   app.use("/api", apiLimiter);
 
+  // Auth routes — public (no requireAuth), with tighter rate limit (20 req/min)
+  app.use("/api/auth", authLimiter, authRouter);
+
   // Dashboard — KPIs + chart data (tighter limit: 60 req/min)
-  app.get("/api/dashboard", dashboardLimiter, async (_req, res) => {
+  app.get("/api/dashboard", requireAuth, dashboardLimiter, async (_req, res) => {
     const data = await storage.getDashboardData();
     res.json(data);
   });
 
   // Fleet — all assets with optional filters
-  app.get("/api/assets", async (req, res) => {
+  app.get("/api/assets", requireAuth, async (req, res) => {
     const type = req.query.type as string | undefined;
     const status = req.query.status as string | undefined;
     const search = req.query.search as string | undefined;
@@ -49,8 +54,8 @@ export async function registerRoutes(
   });
 
   // Single asset detail
-  app.get("/api/assets/:id", async (req, res) => {
-    const data = await storage.getAssetById(req.params.id);
+  app.get("/api/assets/:id", requireAuth, async (req, res) => {
+    const data = await storage.getAssetById(req.params.id as string);
     if (!data) {
       return res.status(404).json({ message: "Asset not found" });
     }
@@ -58,7 +63,7 @@ export async function registerRoutes(
   });
 
   // Predictive maintenance predictions (tighter limit: 30 req/min)
-  app.get("/api/predictions", predictionLimiter, async (req, res) => {
+  app.get("/api/predictions", requireAuth, predictionLimiter, async (req, res) => {
     const risk = req.query.risk as string | undefined;
 
     if (risk && !validRiskLevels.includes(risk)) {
@@ -72,8 +77,8 @@ export async function registerRoutes(
   });
 
   // Digital twin data for a specific asset
-  app.get("/api/digital-twin/:assetId", async (req, res) => {
-    const data = await storage.getDigitalTwinData(req.params.assetId);
+  app.get("/api/digital-twin/:assetId", requireAuth, async (req, res) => {
+    const data = await storage.getDigitalTwinData(req.params.assetId as string);
     if (!data) {
       return res.status(404).json({ message: "Asset not found" });
     }
@@ -81,7 +86,7 @@ export async function registerRoutes(
   });
 
   // Energy analytics
-  app.get("/api/analytics", async (_req, res) => {
+  app.get("/api/analytics", requireAuth, async (_req, res) => {
     const data = await storage.getAnalyticsData();
     res.json(data);
   });
