@@ -11,3 +11,9 @@ CLAUDE.md
 
 # Teaching/lesson materials (personal learning docs)
 docs/lessons/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+e2e/.auth/
