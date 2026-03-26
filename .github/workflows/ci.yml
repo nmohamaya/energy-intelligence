@@ -78,10 +78,39 @@ jobs:
           path: coverage/
           retention-days: 14
 
+  test-python:
+    name: Test Python (Prediction Service)
+    runs-on: ubuntu-latest
+    needs: [lint-python]
+    defaults:
+      run:
+        working-directory: services/prediction-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        run: pytest --cov=app --cov-report=xml --cov-report=term-missing -v
+
+      - name: Upload Python coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage-report
+          path: services/prediction-service/coverage.xml
+          retention-days: 14
+
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, test-python]
     steps:
       - uses: actions/checkout@v4
 
