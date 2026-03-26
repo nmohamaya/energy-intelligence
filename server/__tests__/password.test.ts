@@ -32,7 +32,7 @@ describe("hashPassword", () => {
     expect(hash1).not.toBe(hash2); // Different salts → different outputs
   });
 
-  it("generates a 64-byte (128 hex char) salt", async () => {
+  it("generates a 32-byte (64 hex char) salt", async () => {
     const result = await hashPassword("test");
     const [salt] = result.split(":");
     // SALT_LENGTH = 32 bytes → 64 hex chars

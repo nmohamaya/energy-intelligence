@@ -5,7 +5,7 @@
  * using mock req/res/next objects — no Express app or HTTP needed.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
 
