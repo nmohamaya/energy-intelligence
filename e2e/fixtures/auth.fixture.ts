@@ -1,4 +1,4 @@
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 import { SidebarComponent } from "../pages/sidebar.page";
 
 /**
@@ -19,7 +19,7 @@ const USER = {
 };
 
 export const test = base.extend<{
-  authedPage: ReturnType<typeof base.extend> extends infer T ? T : never;
+  authedPage: Page;
   sidebar: SidebarComponent;
 }>({
   authedPage: async ({ page, context }, use) => {

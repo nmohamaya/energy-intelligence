@@ -34,9 +34,9 @@ interface LimiterConfig {
 }
 
 function createLimiter({ windowMs, max, name }: LimiterConfig) {
-  // In test environments, skip rate limiting to avoid flaky E2E tests.
-  // express-rate-limit v7 treats max=0 as "block all", so we return
-  // a passthrough middleware instead.
+  // In test environments, relax rate limiting (use a very high max) to avoid
+  // flaky E2E tests while still going through express-rate-limit.
+  // Note: this is not a true passthrough; limits are just effectively unreachable.
   if (process.env.NODE_ENV === "test") {
     return rateLimit({ windowMs, max: 10_000, standardHeaders: false, legacyHeaders: false });
   }

@@ -22,8 +22,12 @@ test.describe("Navigation", () => {
 
       // Wait for navigation to complete (URL change)
       if (route.name === "dashboard") {
-        // Dashboard is /#/ — URL might not change if we're already there
-        await page.waitForURL(/(#\/$|#$|\/$)/, { timeout: 5_000 }).catch(() => {});
+        // Dashboard is /#/ — only wait if we're not already there
+        const dashboardRegex = /(#\/$|#$|\/$)/;
+        const currentUrl = page.url();
+        if (!dashboardRegex.test(currentUrl)) {
+          await page.waitForURL(dashboardRegex, { timeout: 5_000 });
+        }
       } else {
         await page.waitForURL(`**/${route.hash}`, { timeout: 5_000 });
       }
