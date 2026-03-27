@@ -1,19 +1,23 @@
 """Unit tests for PredictionEngine — tests the ML logic directly, no HTTP."""
 
-import numpy as np
+import pytest
 from app import PredictionEngine, TelemetryInput
 
 
-def test_engine_initializes_successfully():
-    engine = PredictionEngine()
+@pytest.fixture(scope="session")
+def engine():
+    """Session-scoped PredictionEngine — trains once and is reused across all tests."""
+    return PredictionEngine()
+
+
+def test_engine_initializes_successfully(engine):
     assert engine.scaler is not None
     assert engine.anomaly_detector is not None
     assert engine.rul_model is not None
 
 
-def test_engine_anomaly_score_deterministic():
+def test_engine_anomaly_score_deterministic(engine):
     """Same input should always produce the same anomaly score (models use random_state=42)."""
-    engine = PredictionEngine()
     telemetry = TelemetryInput(
         asset_id="det-test",
         asset_type="wind",
@@ -29,10 +33,8 @@ def test_engine_anomaly_score_deterministic():
     assert result1.anomaly_score == result2.anomaly_score
 
 
-def test_engine_risk_level_thresholds_anomaly():
+def test_engine_risk_level_thresholds_anomaly(engine):
     """Verify score-to-risk mapping boundaries in detect_anomaly."""
-    engine = PredictionEngine()
-
     # We can't easily force specific scores, but we can verify the mapping
     # by testing with known extreme inputs
     extreme = TelemetryInput(
@@ -63,10 +65,8 @@ def test_engine_risk_level_thresholds_anomaly():
     assert result.risk_level == "low"
 
 
-def test_engine_risk_level_thresholds_rul():
+def test_engine_risk_level_thresholds_rul(engine):
     """Verify days-to-risk mapping in predict_failure."""
-    engine = PredictionEngine()
-
     # Normal conditions should predict many days → low or medium risk
     normal = TelemetryInput(
         asset_id="rul-test",
@@ -83,10 +83,8 @@ def test_engine_risk_level_thresholds_rul():
     assert result.risk_level in {"critical", "high", "medium", "low"}
 
 
-def test_engine_component_mapping_all_asset_types():
+def test_engine_component_mapping_all_asset_types(engine):
     """Verify component inference for different asset types and signals."""
-    engine = PredictionEngine()
-
     # Wind + high vibration → Gearbox
     result = engine._infer_component_and_action(
         TelemetryInput(asset_id="t", asset_type="wind", power_output_kw=80, temperature_c=45, vibration_mm_s=5.0)
@@ -124,9 +122,8 @@ def test_engine_component_mapping_all_asset_types():
     assert result[0] == "Monitoring Sensors"
 
 
-def test_engine_all_zero_input():
+def test_engine_all_zero_input(engine):
     """All-zero telemetry should not crash."""
-    engine = PredictionEngine()
     telemetry = TelemetryInput(
         asset_id="zero",
         asset_type="solar",
@@ -146,9 +143,8 @@ def test_engine_all_zero_input():
     assert failure_result.days_until_failure >= 1
 
 
-def test_engine_extreme_values():
+def test_engine_extreme_values(engine):
     """Very large values should not crash."""
-    engine = PredictionEngine()
     telemetry = TelemetryInput(
         asset_id="extreme",
         asset_type="wind",

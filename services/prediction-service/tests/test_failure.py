@@ -39,7 +39,7 @@ def test_predict_failure_date_format(client, normal_telemetry):
 def test_predict_failure_date_is_in_future(client, normal_telemetry):
     data = client.post("/api/v1/predict-failure", json=normal_telemetry).json()
     predicted = datetime.strptime(data["predicted_failure_date"], "%Y-%m-%d").date()
-    assert predicted >= date.today()
+    assert predicted > date.today()
 
 
 def test_predict_failure_confidence_range(client, normal_telemetry):
