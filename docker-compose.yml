@@ -32,9 +32,8 @@ services:
     environment:
       NODE_ENV: production
       PREDICTION_SERVICE_URL: http://prediction-service:8001
-      DATABASE_URL: postgresql://energy:${POSTGRES_PASSWORD:-energy_secret}@timescaledb:5432/energy_intelligence
+      DATABASE_URL: postgresql://energy:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@timescaledb:5432/energy_intelligence
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       prediction-service:
         condition: service_healthy
@@ -90,7 +89,7 @@ services:
     environment:
       POSTGRES_DB: energy_intelligence
       POSTGRES_USER: energy
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-energy_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - timescale-data:/var/lib/postgresql/data
       - ./server/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
