@@ -48,7 +48,8 @@ export async function createApp() {
   app.use(express.urlencoded({ extended: false }));
 
   // Session + Passport — must come before routes so req.user is populated
-  app.use(await createSessionMiddleware());
+  const sessionMiddleware = await createSessionMiddleware();
+  app.use(sessionMiddleware);
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -93,5 +94,5 @@ export async function createApp() {
     return res.status(status).json({ message });
   });
 
-  return { app, httpServer };
+  return { app, httpServer, sessionMiddleware };
 }

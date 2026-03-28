@@ -1,17 +1,24 @@
 /**
- * useWebSocket — React hook for real-time asset updates via WebSocket.
+ * useWebSocket — React hook for real-time data via WebSocket channels.
  *
  * Features:
- * - Auto-connects on mount, auto-reconnects on disconnect (with backoff)
+ * - Auto-connects on mount, auto-reconnects on disconnect (exponential backoff)
+ * - Channel-based subscriptions: dashboard:kpis, alerts:live, asset:<id>:telemetry
  * - Exposes connection status for UI indicators
- * - Provides latest asset updates and alerts via state
+ * - Provides latest asset updates, live alerts, and KPI data via state
  * - Integrates with TanStack Query cache invalidation (debounced)
+ * - Graceful degradation: consumers can fall back to polling when disconnected
+ *
+ * Message protocol (must match server/websocket.ts):
+ *   Server → Client: { channel: string, data: unknown }
+ *   Client → Server: { type: "subscribe" | "unsubscribe", channels: string[] }
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { DashboardData } from "@shared/schema";
 
-// --- Message types (must match server/websocket.ts protocol) ---
+// --- Message types ---
 
 export interface AssetUpdate {
   assetId: string;
@@ -29,17 +36,18 @@ export interface LiveAlert {
   timestamp: string;
 }
 
-type ServerMessage =
-  | { type: "asset_update"; data: AssetUpdate }
-  | { type: "alert"; data: LiveAlert }
-  | { type: "heartbeat"; timestamp: string }
-  | { type: "error"; message: string };
+export type KPIData = DashboardData["kpis"];
+
+interface ServerMessage {
+  channel: string;
+  data: unknown;
+}
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
 interface UseWebSocketOptions {
-  /** Asset IDs to subscribe to. Empty array = all assets. */
-  assetIds?: string[];
+  /** Channels to subscribe to. Empty = receive all (broadcast mode). */
+  channels?: string[];
   /** Max alerts to keep in state (default: 10) */
   maxAlerts?: number;
 }
@@ -48,6 +56,7 @@ interface UseWebSocketReturn {
   status: ConnectionStatus;
   assetUpdates: Map<string, AssetUpdate>;
   liveAlerts: LiveAlert[];
+  kpis: KPIData | null;
   lastHeartbeat: string | null;
 }
 
@@ -64,17 +73,18 @@ function getWsUrl(): string {
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
-  const { assetIds = [], maxAlerts = 10 } = options;
+  const { channels = [], maxAlerts = 10 } = options;
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const retryCount = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const invalidationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevAssetIds = useRef<string[]>([]);
+  const prevChannels = useRef<string[]>([]);
 
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [assetUpdates, setAssetUpdates] = useState<Map<string, AssetUpdate>>(new Map());
   const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
+  const [kpis, setKpis] = useState<KPIData | null>(null);
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
 
   // Debounced query invalidation — collapses multiple WS messages into one refetch
@@ -90,29 +100,28 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     (event: MessageEvent) => {
       try {
         const msg: ServerMessage = JSON.parse(event.data);
+        const { channel, data } = msg;
 
-        switch (msg.type) {
-          case "asset_update":
-            setAssetUpdates((prev) => {
-              const next = new Map(prev);
-              next.set(msg.data.assetId, msg.data);
-              return next;
-            });
-            scheduleInvalidation();
-            break;
-
-          case "alert":
-            setLiveAlerts((prev) => [msg.data, ...prev].slice(0, maxAlerts));
-            scheduleInvalidation();
-            break;
-
-          case "heartbeat":
-            setLastHeartbeat(msg.timestamp);
-            break;
-
-          case "error":
-            console.warn("[ws] Server error:", msg.message);
-            break;
+        if (channel.startsWith("asset:") && channel.endsWith(":telemetry")) {
+          setAssetUpdates((prev) => {
+            const update = data as AssetUpdate;
+            const next = new Map(prev);
+            next.set(update.assetId, update);
+            return next;
+          });
+          scheduleInvalidation();
+        } else if (channel === "alerts:live") {
+          setLiveAlerts((prev) => [data as LiveAlert, ...prev].slice(0, maxAlerts));
+          scheduleInvalidation();
+        } else if (channel === "dashboard:kpis") {
+          setKpis(data as KPIData);
+        } else if (channel === "system") {
+          const sysData = data as Record<string, unknown>;
+          if (sysData.type === "heartbeat") {
+            setLastHeartbeat(sysData.timestamp as string);
+          } else if (sysData.type === "error") {
+            console.warn("[ws] Server error:", sysData.message);
+          }
         }
       } catch {
         // Ignore non-JSON messages (e.g. Vite HMR)
@@ -132,9 +141,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       setStatus("connected");
       retryCount.current = 0;
 
-      // Send subscription if specific assets requested
-      if (assetIds.length > 0) {
-        ws.send(JSON.stringify({ type: "subscribe", assetIds }));
+      // Subscribe to requested channels
+      if (channels.length > 0) {
+        ws.send(JSON.stringify({ type: "subscribe", channels }));
       }
     };
 
@@ -144,16 +153,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       setStatus("disconnected");
       wsRef.current = null;
 
-      // Schedule reconnect with exponential backoff
+      // Schedule reconnect with exponential backoff + jitter
       const delay = Math.min(BASE_DELAY * 2 ** retryCount.current, MAX_DELAY);
+      const jitter = delay * 0.2 * (Math.random() - 0.5);
+      const finalDelay = Math.round(delay + jitter);
       retryCount.current++;
-      reconnectTimer.current = setTimeout(connect, delay);
+      reconnectTimer.current = setTimeout(connect, finalDelay);
     };
 
     ws.onerror = () => {
       // onclose will fire after this, triggering reconnect
     };
-  }, [assetIds, handleMessage]);
+  }, [channels, handleMessage]);
 
   useEffect(() => {
     connect();
@@ -169,33 +180,26 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     };
   }, [connect]);
 
-  // Diff subscriptions when assetIds change and send subscribe/unsubscribe
+  // Diff channel subscriptions when they change
   useEffect(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-    const prev = new Set(prevAssetIds.current);
-    const curr = new Set(assetIds);
+    const prev = new Set(prevChannels.current);
+    const curr = new Set(channels);
 
-    // If switching to empty (broadcast mode), send empty subscribe to clear server state
-    if (assetIds.length === 0 && prevAssetIds.current.length > 0) {
-      ws.send(JSON.stringify({ type: "subscribe", assetIds: [] }));
-    } else {
-      // Unsubscribe removed IDs
-      const removed = prevAssetIds.current.filter((id) => !curr.has(id));
-      if (removed.length > 0) {
-        ws.send(JSON.stringify({ type: "unsubscribe", assetIds: removed }));
-      }
-
-      // Subscribe new IDs
-      const added = assetIds.filter((id) => !prev.has(id));
-      if (added.length > 0) {
-        ws.send(JSON.stringify({ type: "subscribe", assetIds: added }));
-      }
+    const removed = prevChannels.current.filter((ch) => !curr.has(ch));
+    if (removed.length > 0) {
+      ws.send(JSON.stringify({ type: "unsubscribe", channels: removed }));
     }
 
-    prevAssetIds.current = assetIds;
-  }, [assetIds]);
+    const added = channels.filter((ch) => !prev.has(ch));
+    if (added.length > 0) {
+      ws.send(JSON.stringify({ type: "subscribe", channels: added }));
+    }
 
-  return { status, assetUpdates, liveAlerts, lastHeartbeat };
+    prevChannels.current = channels;
+  }, [channels]);
+
+  return { status, assetUpdates, liveAlerts, kpis, lastHeartbeat };
 }
