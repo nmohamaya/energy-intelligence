@@ -21,7 +21,7 @@ const { Pool } = pg;
 if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL is required. Set it in .env or docker-compose.yml.\n" +
-      "Example: postgresql://energy:energy_secret@localhost:5432/energy_intelligence",
+      "Example: postgresql://user:password@localhost:5432/energy_intelligence",
   );
 }
 
