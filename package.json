@@ -21,7 +21,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx server/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:setup": "npm run db:push && npm run db:seed"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -61,7 +61,7 @@ async function seed() {
   if (!process.env.DATABASE_URL) {
     console.error("DATABASE_URL is required. Example:");
     console.error(
-      "  DATABASE_URL=postgresql://energy:energy_secret@localhost:5432/energy_intelligence npx tsx server/db/seed.ts",
+      "  DATABASE_URL=postgresql://user:password@localhost:5432/energy_intelligence npx tsx server/db/seed.ts",
     );
     process.exit(1);
   }
@@ -284,10 +284,10 @@ async function seed() {
   // --- 8. Seed Default Admin User ---
   console.log("Seeding default admin user...");
   const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword && process.env.NODE_ENV === "production") {
-    console.warn("  Skipping admin seed: ADMIN_PASSWORD env var is required in production");
+  if (!adminPassword) {
+    console.warn("  Skipping admin seed: set ADMIN_PASSWORD env var to create admin user");
   } else {
-    const adminPasswordHash = await hashPassword(adminPassword || "admin123!!");
+    const adminPasswordHash = await hashPassword(adminPassword);
     await db
       .insert(schema.users)
       .values({
