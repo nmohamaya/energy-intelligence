@@ -473,7 +473,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 | [Contributing](docs/CONTRIBUTING.md) | Setup, branch conventions, PR process, code style |
 | [ADRs](docs/adr/) | Architecture Decision Records — why we chose each technology |
 | [Roadmap](docs/ROADMAP.md) | Production roadmap, simulated vs real data mapping |
+| [Bug Fixes](docs/BUGFIXES.md) | Key bugs, root causes, and lessons learned |
 | [Lessons](docs/lessons/) | 12 architecture teaching lessons covering the full stack |
+| [Changelog](CHANGELOG.md) | All notable changes by date and PR |
 
 ---
 

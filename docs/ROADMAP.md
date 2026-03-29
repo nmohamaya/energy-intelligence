@@ -5,16 +5,21 @@ This document maps the path from current prototype to production-ready platform.
 ## Current State
 
 **Done:**
-- React 18 + TypeScript frontend with 5 pages (Dashboard, Fleet, Maintenance, Digital Twin, Analytics)
-- Express.js backend with 6 REST API endpoints
-- TimescaleDB persistence via Drizzle ORM (replaces in-memory storage)
-- WebSocket real-time streaming with auto-reconnect
+
+- React 18 + TypeScript frontend with 6 pages (Dashboard, Fleet, Maintenance, Digital Twin, Analytics, Map)
+- Express.js backend with 6 REST API endpoints (split into per-resource route modules)
+- Session-based authentication + RBAC with 4 roles (PR #39)
+- API rate limiting — tiered per endpoint (PR #34)
+- TimescaleDB persistence via Drizzle ORM with lazy-init proxy (PR #51)
+- WebSocket real-time streaming with channel-based protocol and session auth (PR #52)
+- Interactive asset map with Leaflet (PR #33)
 - Python FastAPI prediction service (Isolation Forest + Gradient Boosting)
-- Docker Compose for local dev (3 services)
+- Docker Compose for local dev (3 services, parameterized credentials)
 - Kubernetes manifests (deployments, HPA, network policies, ingress)
-- CI/CD pipeline (GitHub Actions → GHCR)
-- API input validation with Zod enums
-- Test suite (Vitest + supertest, 54 tests)
+- CI/CD pipeline (GitHub Actions → lint, typecheck, test, build, Docker push to GHCR)
+- API input validation with Zod enums (PR #30)
+- Comprehensive test suite: 124 Vitest tests, 23 Playwright E2E tests, 49 Pytest tests (PRs #45, #48, #49)
+- Full documentation suite: architecture, testing guide, API reference, 6 ADRs, contributing guide (PR #53)
 
 ---
 
@@ -103,19 +108,21 @@ Understanding what's simulated is critical for planning the production path. Eac
 
 ## Production Phases
 
-### Phase 1: Foundation (Current → Security & Auth)
+### Phase 1: Foundation — MOSTLY COMPLETE
 
 **Goal:** Secure the platform so it can be deployed to a real environment.
 
-| Issue | Task | Priority | Why First |
-|-------|------|----------|-----------|
-| #10 | Authentication + RBAC (Keycloak/Auth0) | **Critical** | Can't deploy without user auth |
-| #3 | External secrets management (Vault/AWS SM) | **Critical** | K8s secrets are base64, not encrypted |
-| #16 | API rate limiting | High | Prevents abuse before public exposure |
-| #25 | Security hardening (container scanning, headers, RBAC) | High | Baseline security posture |
-| #28 | Align import extensions across server/db | Low | Cleanup, prevents runtime issues |
+| Issue | Task | Status | Notes |
+|-------|------|--------|-------|
+| #10 | Authentication + RBAC | **Done** (PR #39) | Session-based auth, 4 roles, route protection |
+| #16 | API rate limiting | **Done** (PR #34) | Tiered per endpoint, draft-7 headers |
+| #12 | Comprehensive test suite | **Done** (PRs #45, #48, #49) | 124 Vitest + 23 Playwright + 49 Pytest |
+| #4 | TimescaleDB persistence | **Done** (PR #51) | Drizzle ORM, lazy-init proxy |
+| #5 | WebSocket real-time streaming | **Done** (PR #52) | Channel-based, session auth, ping/pong |
+| #3 | External secrets management (Vault/AWS SM) | **Remaining** | K8s secrets are base64, not encrypted |
+| #25 | Security hardening (container scanning, headers) | **Remaining** | Baseline security posture |
 
-**Milestone:** Platform can be deployed with real user accounts and proper secret management.
+**Milestone:** Platform has working auth, persistence, real-time streaming, and tests. Remaining: secrets management and security hardening.
 
 ### Phase 2: Infrastructure (Deployment & Observability)
 
@@ -180,13 +187,11 @@ Understanding what's simulated is critical for planning the production path. Eac
 This tracks the journey from "100% simulated" to "0% simulated" across phases.
 
 ```
-Current state (prototype):
+Current state (Phase 1 mostly complete):
   MemStorage mode:  ~100% simulated (all data generated in-memory)
   DatabaseStorage:  ~30% simulated  (seed data is real-shaped but synthetic;
                                       real-time metrics still randomized)
-
-After Phase 1 (Auth & Security):
-  Still ~30% simulated — no data pipeline changes, but platform is secure
+  Platform is now secured (auth, rate limiting, RBAC) and fully tested
 
 After Phase 2 (Infrastructure):
   Still ~30% simulated — monitoring/logging added, but data sources unchanged
