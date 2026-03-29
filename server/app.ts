@@ -6,6 +6,7 @@
  */
 
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { createServer } from "http";
 import { createSessionMiddleware } from "./auth/session.js";
@@ -36,6 +37,10 @@ export async function createApp() {
   // the real client IP from X-Forwarded-For, not the proxy's IP.
   // Critical for rate limiting — without this, all users share one bucket.
   app.set("trust proxy", 1);
+
+  // Security headers — CSP disabled for now because Vite injects inline scripts.
+  // A proper CSP policy should be crafted once inline script/style usage is audited.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   app.use(
     express.json({
