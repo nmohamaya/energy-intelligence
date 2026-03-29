@@ -65,7 +65,7 @@ This single-port approach eliminates CORS complexity between frontend and backen
 
 **Owns:** ML model training, anomaly detection, remaining useful life prediction.
 
-Runs independently. The web app calls it via HTTP when predictions are needed. Models are trained on synthetic data at startup (~2-3s cold start). See [ADR-009](adr/009-fastapi-ml-service.md) for why FastAPI was chosen.
+Runs independently. The web app calls it via HTTP when predictions are needed. Models are trained on synthetic data at startup (~2-3s cold start). FastAPI was chosen for its async support, automatic OpenAPI docs, and Pydantic validation — a natural fit for ML serving.
 
 ### TimescaleDB
 
@@ -301,11 +301,10 @@ Both models train on 2,000 synthetic samples at startup. Feature normalization u
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| `POST` | `/predict/anomaly` | Single anomaly detection |
-| `POST` | `/predict/rul` | Remaining useful life prediction |
+| `POST` | `/api/v1/detect-anomaly` | Anomaly detection (Isolation Forest) |
+| `POST` | `/api/v1/predict-failure` | Failure prediction + RUL estimation |
 | `POST` | `/api/v1/batch-predict` | Batch prediction (multiple assets) |
-| `GET` | `/health` | Kubernetes health probe |
-| `GET` | `/model/info` | Model metadata |
+| `GET` | `/health` | Kubernetes health/readiness probe |
 
 ---
 

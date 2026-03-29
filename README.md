@@ -2,7 +2,7 @@
 
 An AI-powered predictive operations platform for renewable energy asset management. This prototype demonstrates what the next-generation "operating system for renewable energy" could look like — built with a production-grade microservices architecture.
 
-![Dashboard](https://img.shields.io/badge/Status-Prototype-green) ![React](https://img.shields.io/badge/React-18-blue) ![Node.js](https://img.shields.io/badge/Node.js-20-green) ![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED) ![Python](https://img.shields.io/badge/Python-3.11-yellow) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-3-blue)
+![Dashboard](https://img.shields.io/badge/Status-Prototype-green) ![React](https://img.shields.io/badge/React-18-blue) ![Node.js](https://img.shields.io/badge/Node.js-20-green) ![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED) ![Python](https://img.shields.io/badge/Python-3.12-yellow) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-3-blue)
 
 ## Table of Contents
 

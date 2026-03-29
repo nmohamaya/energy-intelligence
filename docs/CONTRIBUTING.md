@@ -226,7 +226,7 @@ This project follows test-driven development (TDD). Tests are expected for all n
 |---------------------|---------------|-------------|
 | New API endpoint | `server/__tests__/` | `npx vitest run` |
 | New Zod schema | `shared/__tests__/` | `npx vitest run` |
-| New user flow | `e2e/` | `npx vitest run` |
+| New user flow | `e2e/` | `npx playwright test` |
 | New ML feature | `services/prediction-service/tests/` | `python -m pytest` |
 
 For the complete testing guide, including conventions, patterns, and examples, see [docs/TESTING.md](TESTING.md).

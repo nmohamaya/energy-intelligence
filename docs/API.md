@@ -59,14 +59,14 @@ Create a new user account. Automatically logs in and sets the session cookie.
 }
 ```
 
-**Response (200):**
+**Response (201):**
 ```json
 {
   "id": 1,
   "username": "jdoe",
   "email": "jdoe@example.com",
   "displayName": "Jane Doe",
-  "role": "viewer",
+  "role": "operator",
   "createdAt": "2026-03-29T10:00:00.000Z"
 }
 ```
@@ -92,7 +92,7 @@ Authenticate an existing user. Sets the session cookie on success.
   "username": "jdoe",
   "email": "jdoe@example.com",
   "displayName": "Jane Doe",
-  "role": "viewer",
+  "role": "operator",
   "createdAt": "2026-03-29T10:00:00.000Z"
 }
 ```
@@ -121,7 +121,7 @@ Return the currently authenticated user.
   "username": "jdoe",
   "email": "jdoe@example.com",
   "displayName": "Jane Doe",
-  "role": "viewer",
+  "role": "operator",
   "createdAt": "2026-03-29T10:00:00.000Z"
 }
 ```
@@ -435,75 +435,92 @@ A valid session cookie (from a prior HTTP login) is required. The WebSocket hand
 
 The prediction service is a standalone FastAPI microservice running on port **8001**. It is called internally by the web app backend and is not directly exposed to end users in production.
 
-### POST /predict/anomaly
+### POST /api/v1/detect-anomaly
 
-Run anomaly detection on a telemetry sample using an Isolation Forest model.
+Detect anomalies in real-time sensor telemetry using an Isolation Forest model.
 
 **Request:**
 ```json
 {
-  "temperature": 72.5,
-  "vibration": 1.2,
-  "power_output": 145.0,
-  "wind_speed": 11.3,
-  "humidity": 65.0
+  "asset_id": "asset-001",
+  "asset_type": "solar",
+  "power_output_kw": 145.0,
+  "temperature_c": 72.5,
+  "vibration_mm_s": 1.2,
+  "humidity_pct": 65.0,
+  "efficiency_pct": 90.0,
+  "hours_since_maintenance": 500
 }
 ```
 
 **Response (200):**
 ```json
 {
-  "anomaly_score": -0.42,
+  "asset_id": "asset-001",
   "is_anomaly": false,
-  "risk_level": "Low",
-  "confidence": 0.87
+  "anomaly_score": -0.42,
+  "risk_level": "low",
+  "details": "Normal operating parameters"
 }
 ```
 
-### POST /predict/rul
+### POST /api/v1/predict-failure
 
-Predict remaining useful life (RUL) in days using a Gradient Boosting model.
+Predict component failure and remaining useful life using Gradient Boosting regression.
 
 **Request:**
 ```json
 {
-  "temperature": 72.5,
-  "vibration": 1.2,
-  "power_output": 145.0,
-  "wind_speed": 11.3,
-  "humidity": 65.0
+  "asset_id": "asset-001",
+  "asset_type": "wind",
+  "power_output_kw": 98.0,
+  "temperature_c": 95.1,
+  "vibration_mm_s": 3.8,
+  "humidity_pct": 80.0,
+  "efficiency_pct": 85.0,
+  "hours_since_maintenance": 2000
 }
 ```
 
 **Response (200):**
 ```json
 {
-  "remaining_useful_life_days": 142,
-  "confidence": 0.85,
-  "risk_level": "Low"
+  "asset_id": "asset-001",
+  "component": "Main Bearing",
+  "predicted_failure_date": "2026-04-12",
+  "days_until_failure": 14,
+  "confidence_pct": 91.0,
+  "risk_level": "high",
+  "recommended_action": "Schedule bearing inspection within 7 days"
 }
 ```
 
 ### POST /api/v1/batch-predict
 
-Run predictions on multiple telemetry samples in a single request.
+Run failure predictions on multiple telemetry samples in a single request.
 
 **Request:**
 ```json
 [
   {
-    "temperature": 72.5,
-    "vibration": 1.2,
-    "power_output": 145.0,
-    "wind_speed": 11.3,
-    "humidity": 65.0
+    "asset_id": "asset-001",
+    "asset_type": "solar",
+    "power_output_kw": 145.0,
+    "temperature_c": 72.5,
+    "vibration_mm_s": 1.2,
+    "humidity_pct": 65.0,
+    "efficiency_pct": 90.0,
+    "hours_since_maintenance": 500
   },
   {
-    "temperature": 95.1,
-    "vibration": 3.8,
-    "power_output": 98.0,
-    "wind_speed": 8.2,
-    "humidity": 80.0
+    "asset_id": "asset-002",
+    "asset_type": "wind",
+    "power_output_kw": 98.0,
+    "temperature_c": 95.1,
+    "vibration_mm_s": 3.8,
+    "humidity_pct": 80.0,
+    "efficiency_pct": 85.0,
+    "hours_since_maintenance": 2000
   }
 ]
 ```
@@ -512,50 +529,24 @@ Run predictions on multiple telemetry samples in a single request.
 ```json
 [
   {
-    "anomaly_score": -0.42,
-    "is_anomaly": false,
-    "risk_level": "Low",
-    "remaining_useful_life_days": 142
+    "asset_id": "asset-001",
+    "component": "Inverter",
+    "predicted_failure_date": "2026-07-15",
+    "days_until_failure": 108,
+    "confidence_pct": 85.0,
+    "risk_level": "low",
+    "recommended_action": "Continue routine monitoring"
   },
   {
-    "anomaly_score": 0.61,
-    "is_anomaly": true,
-    "risk_level": "High",
-    "remaining_useful_life_days": 28
+    "asset_id": "asset-002",
+    "component": "Main Bearing",
+    "predicted_failure_date": "2026-04-12",
+    "days_until_failure": 14,
+    "confidence_pct": 91.0,
+    "risk_level": "high",
+    "recommended_action": "Schedule bearing inspection within 7 days"
   }
 ]
-```
-
-### POST /api/v1/detect-anomaly
-
-Versioned anomaly detection endpoint. Same behavior as `/predict/anomaly`.
-
-**Request/Response:** Same as [POST /predict/anomaly](#post-predictanomaly).
-
-### POST /api/v1/predict-failure
-
-Predict component failure with specific component identification.
-
-**Request:**
-```json
-{
-  "temperature": 95.1,
-  "vibration": 3.8,
-  "power_output": 98.0,
-  "wind_speed": 8.2,
-  "humidity": 80.0
-}
-```
-
-**Response (200):**
-```json
-{
-  "failure_predicted": true,
-  "component": "Main Bearing",
-  "confidence": 0.91,
-  "predicted_failure_date": "2026-04-12",
-  "risk_level": "High"
-}
 ```
 
 ### GET /health
@@ -566,23 +557,8 @@ Kubernetes health/readiness probe endpoint.
 ```json
 {
   "status": "healthy",
-  "model_version": "1.0.0",
+  "model_version": "1.0.0-isolation-forest",
   "uptime_seconds": 3842.5
-}
-```
-
-### GET /model/info
-
-Return metadata about the loaded ML models.
-
-**Response (200):**
-```json
-{
-  "anomaly_model": "IsolationForest",
-  "rul_model": "GradientBoostingRegressor",
-  "training_samples": 2000,
-  "feature_count": 5,
-  "scaler": "StandardScaler"
 }
 ```
 

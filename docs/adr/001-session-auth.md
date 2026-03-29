@@ -26,7 +26,7 @@ The team needed something that works immediately with the existing Node.js stack
 
 ## Decision
 
-Use express-session with passport-local strategy for authentication. Session storage uses connect-pg-simple for PostgreSQL-backed sessions when DATABASE_URL is set, and memorystore for local development without Docker. Passwords are hashed with scrypt. Role-based access control (RBAC) is enforced via middleware that checks user roles (admin, operator, viewer).
+Use express-session with passport-local strategy for authentication. Session storage uses connect-pg-simple for PostgreSQL-backed sessions when DATABASE_URL is set, and memorystore for local development without Docker. Passwords are hashed with scrypt. Role-based access control (RBAC) is enforced via middleware that checks user roles (operator, engineer, manager, admin).
 
 Keycloak integration is deferred to a production follow-up once the platform moves beyond prototype stage.
 
