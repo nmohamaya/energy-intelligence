@@ -29,6 +29,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # Required for cosign keyless signing via OIDC
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +58,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push web-app image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -77,6 +79,22 @@ jobs:
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image (keyless via GitHub OIDC)
+        run: cosign sign --yes ${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-web-app.spdx.json
+
+      - name: Attach SBOM to image
+        run: cosign attach sbom --sbom sbom-web-app.spdx.json ${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}
+
   build-prediction-service:
     name: Build Prediction Service Image
     runs-on: ubuntu-latest
@@ -84,6 +102,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # Required for cosign keyless signing via OIDC
     steps:
       - uses: actions/checkout@v4
 
@@ -109,6 +128,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push prediction-service image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./services/prediction-service
@@ -127,3 +147,19 @@ jobs:
           exit-code: "1"
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image (keyless via GitHub OIDC)
+        run: cosign sign --yes ${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-prediction-service.spdx.json
+
+      - name: Attach SBOM to image
+        run: cosign attach sbom --sbom sbom-prediction-service.spdx.json ${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}
