@@ -1,23 +1,34 @@
 /**
- * WebSocket server for real-time asset updates.
+ * WebSocket server for real-time data streaming.
  *
  * Attaches to the existing HTTP server (shares port 5000) and broadcasts
- * simulated asset telemetry every 5 seconds. Clients can subscribe to
- * specific asset IDs to receive targeted updates.
+ * data on named channels. Authenticated via session cookie on upgrade.
  *
- * Message protocol (JSON):
+ * Channel protocol:
  *   Server → Client:
- *     { type: "asset_update", data: { assetId, currentOutput, status, healthScore } }
- *     { type: "alert",        data: { id, assetId, assetName, severity, message, timestamp } }
- *     { type: "heartbeat",    timestamp: string }
+ *     { channel: "dashboard:kpis",          data: { ...kpis } }
+ *     { channel: "alerts:live",             data: { ...alert } }
+ *     { channel: "asset:<id>:telemetry",    data: { ...telemetry } }
+ *     { channel: "system",                  data: { type: "connected" | "heartbeat" | "subscribed" | "error", ... } }
  *
  *   Client → Server:
- *     { type: "subscribe",   assetIds: string[] }  — empty array = return to broadcast mode
- *     { type: "unsubscribe", assetIds: string[] }
+ *     { type: "subscribe",   channels: string[] }
+ *     { type: "unsubscribe", channels: string[] }
+ *
+ * Auth:
+ *   The WS upgrade is rejected with 401 if the request doesn't carry a
+ *   valid session cookie. Uses `noServer` mode so we can run the Express
+ *   session middleware on the raw upgrade request before accepting it.
+ *
+ * Heartbeat:
+ *   Native WS ping/pong every 30s. Dead clients (no pong) are terminated.
  */
 
 import { WebSocketServer, WebSocket } from "ws";
+import http from "http";
 import type { Server } from "http";
+import type { RequestHandler, Request, Response } from "express";
+import { passport } from "./auth/passport.js";
 import { storage } from "./storage";
 
 // Inline logger to avoid circular dependency with ./index
@@ -31,11 +42,13 @@ function log(message: string, source = "ws") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-// Each connected client tracks which asset IDs it cares about.
-// An empty set means "all assets" (broadcast mode).
+// Each connected client tracks its channel subscriptions.
+// An empty set means "all channels" (broadcast mode).
 interface ClientState {
   ws: WebSocket;
-  subscriptions: Set<string>;
+  channels: Set<string>;
+  isAlive: boolean;
+  userId: number;
 }
 
 const clients = new Map<WebSocket, ClientState>();
@@ -45,128 +58,205 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Initialise the WebSocket server on the existing HTTP server.
- * Uses path `/ws` so it doesn't collide with Vite's HMR socket.
+ * Uses `noServer` mode to authenticate the upgrade request via session cookie.
  */
-export function setupWebSocket(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+export function setupWebSocket(
+  server: Server,
+  sessionMiddleware: RequestHandler,
+): WebSocketServer {
+  const wss = new WebSocketServer({ noServer: true });
 
-  wss.on("connection", (ws) => {
-    const state: ClientState = { ws, subscriptions: new Set() };
+  // Handle upgrade: run session + passport middleware, reject if unauthenticated
+  server.on("upgrade", (req, socket, head) => {
+    // Parse URL to handle query strings (e.g. /ws?token=...) and trailing slashes
+    try {
+      const pathname = new URL(
+        req.url ?? "",
+        `http://${req.headers.host ?? "localhost"}`,
+      ).pathname.replace(/\/+$/, "") || "/";
+      if (pathname !== "/ws") return;
+    } catch {
+      return; // Malformed URL — not our upgrade
+    }
+
+    // Create a minimal response object for express-session compatibility
+    const res = Object.create(http.ServerResponse.prototype) as Response;
+    Object.assign(res, {
+      writeHead: () => res,
+      setHeader: () => res,
+      getHeader: () => undefined,
+      end: () => {},
+    });
+
+    const rejectUpgrade = (reason: string) => {
+      log(`Rejected upgrade: ${reason}`);
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+    };
+
+    // Run session → passport.initialize → passport.session in sequence
+    sessionMiddleware(req as Request, res, (err?: unknown) => {
+      if (err) return rejectUpgrade("session middleware failed");
+      passport.initialize()(req as Request, res, (err?: unknown) => {
+        if (err) return rejectUpgrade("passport init failed");
+        passport.session()(req as Request, res, (err?: unknown) => {
+          if (err) return rejectUpgrade("passport session failed");
+          if (!(req as unknown as Request).isAuthenticated?.()) {
+            return rejectUpgrade("unauthenticated");
+          }
+
+          wss.handleUpgrade(req, socket, head, (ws) => {
+            wss.emit("connection", ws, req);
+          });
+        });
+      });
+    });
+  });
+
+  wss.on("connection", (ws, req) => {
+    const user = (req as unknown as Request).user;
+    const state: ClientState = {
+      ws,
+      channels: new Set(),
+      isAlive: true,
+      userId: user?.id ?? 0,
+    };
     clients.set(ws, state);
-    log(`Client connected (${clients.size} total)`);
+    log(`Client connected: user ${user?.username ?? "unknown"} (${clients.size} total)`);
 
     // Start intervals on first connection
     startBroadcastLoop();
 
-    // Send immediate heartbeat so client knows connection is live
-    send(ws, { type: "heartbeat", timestamp: new Date().toISOString() });
+    // Welcome message
+    send(ws, "system", {
+      type: "connected",
+      userId: user?.id,
+      availableChannels: ["dashboard:kpis", "alerts:live", "asset:<id>:telemetry"],
+    });
+
+    ws.on("pong", () => {
+      state.isAlive = true;
+    });
 
     ws.on("message", (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
         handleClientMessage(state, msg);
       } catch {
-        send(ws, { type: "error", message: "Invalid JSON" });
+        send(ws, "system", { type: "error", message: "Invalid JSON" });
       }
     });
 
     ws.on("close", () => {
       clients.delete(ws);
-      log(`Client disconnected (${clients.size} total)`);
-
-      // Stop intervals when no clients remain
-      if (clients.size === 0) {
-        stopBroadcastLoop();
-      }
+      log(`Client disconnected: user ${user?.username ?? "unknown"} (${clients.size} total)`);
+      if (clients.size === 0) stopBroadcastLoop();
     });
 
     ws.on("error", (err) => {
       log(`Error: ${err.message}`);
       clients.delete(ws);
-      if (clients.size === 0) {
-        stopBroadcastLoop();
-      }
+      if (clients.size === 0) stopBroadcastLoop();
     });
   });
 
-  // Clean up intervals when server closes
-  wss.on("close", () => {
-    stopBroadcastLoop();
-  });
+  wss.on("close", () => stopBroadcastLoop());
 
-  log("Server ready on /ws");
+  log("Server ready on /ws (authenticated)");
   return wss;
 }
 
-function send(ws: WebSocket, data: unknown) {
+// --- Message sending ---
+
+function send(ws: WebSocket, channel: string, data: unknown) {
   if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(data));
+    ws.send(JSON.stringify({ channel, data }));
   }
 }
 
-function handleClientMessage(client: ClientState, msg: Record<string, unknown>) {
-  if (msg.type === "subscribe") {
-    const assetIds = msg.assetIds;
-    if (!Array.isArray(assetIds)) return;
+function broadcast(channel: string, data: unknown) {
+  clients.forEach((client) => {
+    // Empty channels set = receive everything (broadcast mode)
+    if (client.channels.size > 0 && !client.channels.has(channel)) return;
+    send(client.ws, channel, data);
+  });
+}
 
-    // Empty array = clear subscriptions (return to broadcast mode)
-    if (assetIds.length === 0) {
-      client.subscriptions.clear();
-      log("Client cleared subscriptions (broadcast mode)");
-      return;
+// --- Client message handling ---
+
+function handleClientMessage(
+  client: ClientState,
+  msg: Record<string, unknown>,
+) {
+  const msgType = msg.type;
+
+  if (msgType === "subscribe") {
+    const channels = msg.channels;
+    if (!Array.isArray(channels)) return;
+
+    for (const ch of channels) {
+      if (typeof ch === "string") client.channels.add(ch);
     }
 
-    for (const id of assetIds) {
-      if (typeof id === "string") client.subscriptions.add(id);
-    }
-    log(`Client subscribed to ${client.subscriptions.size} assets`);
-  } else if (msg.type === "unsubscribe") {
-    const assetIds = msg.assetIds;
-    if (!Array.isArray(assetIds)) return;
+    send(client.ws, "system", {
+      type: "subscribed",
+      channels: Array.from(client.channels),
+    });
+    log(`User ${client.userId} subscribed to: ${Array.from(client.channels).join(", ")}`);
+  } else if (msgType === "unsubscribe") {
+    const channels = msg.channels;
+    if (!Array.isArray(channels)) return;
 
-    for (const id of assetIds) {
-      if (typeof id === "string") client.subscriptions.delete(id);
+    for (const ch of channels) {
+      if (typeof ch === "string") client.channels.delete(ch);
     }
-    log(`Client unsubscribed, now tracking ${client.subscriptions.size} assets`);
+
+    send(client.ws, "system", {
+      type: "unsubscribed",
+      channels: Array.from(client.channels),
+    });
   }
 }
 
-/**
- * Start broadcast + heartbeat intervals. Only runs when clients are connected.
- */
+// --- Broadcast loop ---
+
+let kpiTick = 0;
+
 function startBroadcastLoop() {
   if (broadcastInterval) return;
 
+  // Asset telemetry + alerts every 5s
   broadcastInterval = setInterval(async () => {
     if (clients.size === 0) return;
 
     try {
       const assets = await storage.getAssets();
+
       // Pick 3–6 random assets to "update" each tick
       const count = Math.min(assets.length, 3 + Math.floor(Math.random() * 4));
-
-      // Partial Fisher-Yates shuffle: unbiased, O(count) instead of O(n log n)
       const assetsCopy = [...assets];
       for (let i = 0; i < count; i++) {
         const j = i + Math.floor(Math.random() * (assetsCopy.length - i));
         [assetsCopy[i], assetsCopy[j]] = [assetsCopy[j], assetsCopy[i]];
       }
-      const updates = assetsCopy.slice(0, count);
 
-      for (const asset of updates) {
-        const update = {
-          type: "asset_update" as const,
-          data: {
-            assetId: asset.id,
-            currentOutput: Math.round(asset.currentOutput * (0.95 + Math.random() * 0.1)),
-            status: asset.status,
-            healthScore: Math.max(0, Math.min(100,
+      for (let i = 0; i < count; i++) {
+        const asset = assetsCopy[i];
+        const channel = `asset:${asset.id}:telemetry`;
+        broadcast(channel, {
+          assetId: asset.id,
+          currentOutput: Math.round(
+            asset.currentOutput * (0.95 + Math.random() * 0.1),
+          ),
+          status: asset.status,
+          healthScore: Math.max(
+            0,
+            Math.min(
+              100,
               asset.healthScore + Math.round((Math.random() - 0.5) * 2),
-            )),
-          },
-        };
-
-        broadcast(update, asset.id);
+            ),
+          ),
+        });
       }
 
       // ~10% chance of a simulated alert each tick
@@ -181,37 +271,48 @@ function startBroadcastLoop() {
           "Scheduled maintenance approaching",
         ];
 
-        const alert = {
-          type: "alert" as const,
-          data: {
-            id: `ws-alert-${Date.now()}`,
-            assetId: target.id,
-            assetName: target.name,
-            severity: severities[Math.floor(Math.random() * severities.length)],
-            message: messages[Math.floor(Math.random() * messages.length)],
-            timestamp: new Date().toISOString(),
-          },
-        };
+        broadcast("alerts:live", {
+          id: `ws-alert-${Date.now()}`,
+          assetId: target.id,
+          assetName: target.name,
+          severity: severities[Math.floor(Math.random() * severities.length)],
+          message: messages[Math.floor(Math.random() * messages.length)],
+          timestamp: new Date().toISOString(),
+        });
+      }
 
-        broadcast(alert);
+      // KPI broadcast every 10s (every other tick)
+      kpiTick++;
+      if (kpiTick % 2 === 0) {
+        const dashboard = await storage.getDashboardData();
+        broadcast("dashboard:kpis", dashboard.kpis);
       }
     } catch (err) {
       log(`Broadcast error: ${err instanceof Error ? err.message : err}`);
     }
   }, 5_000);
 
-  // Heartbeat every 30 seconds
+  // Native WS ping/pong every 30s — detect dead clients
   heartbeatInterval = setInterval(() => {
-    const heartbeat = { type: "heartbeat", timestamp: new Date().toISOString() };
     clients.forEach((client) => {
-      send(client.ws, heartbeat);
+      if (!client.isAlive) {
+        log(`Terminating dead client: user ${client.userId}`);
+        client.ws.terminate();
+        clients.delete(client.ws);
+        return;
+      }
+      client.isAlive = false;
+      client.ws.ping();
+    });
+
+    // Also send a JSON heartbeat for client-side display
+    const now = new Date().toISOString();
+    clients.forEach((client) => {
+      send(client.ws, "system", { type: "heartbeat", timestamp: now });
     });
   }, 30_000);
 }
 
-/**
- * Stop broadcast + heartbeat intervals when no clients remain.
- */
 function stopBroadcastLoop() {
   if (broadcastInterval) {
     clearInterval(broadcastInterval);
@@ -221,19 +322,5 @@ function stopBroadcastLoop() {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
-}
-
-/**
- * Send a message to all connected clients, respecting their subscriptions.
- * If assetId is provided, only clients subscribed to that asset (or with
- * empty subscriptions = "all") receive it.
- */
-function broadcast(message: unknown, assetId?: string) {
-  clients.forEach((client) => {
-    // Empty subscription set = broadcast everything
-    if (assetId && client.subscriptions.size > 0 && !client.subscriptions.has(assetId)) {
-      return;
-    }
-    send(client.ws, message);
-  });
+  kpiTick = 0;
 }
