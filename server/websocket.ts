@@ -68,8 +68,16 @@ export function setupWebSocket(
 
   // Handle upgrade: run session + passport middleware, reject if unauthenticated
   server.on("upgrade", (req, socket, head) => {
-    // Only handle /ws path — let Vite HMR handle its own upgrades
-    if (req.url !== "/ws") return;
+    // Parse URL to handle query strings (e.g. /ws?token=...) and trailing slashes
+    try {
+      const pathname = new URL(
+        req.url ?? "",
+        `http://${req.headers.host ?? "localhost"}`,
+      ).pathname.replace(/\/+$/, "") || "/";
+      if (pathname !== "/ws") return;
+    } catch {
+      return; // Malformed URL — not our upgrade
+    }
 
     // Create a minimal response object for express-session compatibility
     const res = Object.create(http.ServerResponse.prototype) as Response;
@@ -80,15 +88,21 @@ export function setupWebSocket(
       end: () => {},
     });
 
+    const rejectUpgrade = (reason: string) => {
+      log(`Rejected upgrade: ${reason}`);
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+    };
+
     // Run session → passport.initialize → passport.session in sequence
-    sessionMiddleware(req as Request, res, () => {
-      passport.initialize()(req as Request, res, () => {
-        passport.session()(req as Request, res, () => {
+    sessionMiddleware(req as Request, res, (err?: unknown) => {
+      if (err) return rejectUpgrade("session middleware failed");
+      passport.initialize()(req as Request, res, (err?: unknown) => {
+        if (err) return rejectUpgrade("passport init failed");
+        passport.session()(req as Request, res, (err?: unknown) => {
+          if (err) return rejectUpgrade("passport session failed");
           if (!(req as unknown as Request).isAuthenticated?.()) {
-            log("Rejected unauthenticated upgrade");
-            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-            socket.destroy();
-            return;
+            return rejectUpgrade("unauthenticated");
           }
 
           wss.handleUpgrade(req, socket, head, (ws) => {

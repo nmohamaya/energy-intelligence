@@ -79,6 +79,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const retryCount = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const invalidationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const channelsRef = useRef(channels);
+  channelsRef.current = channels;
   const prevChannels = useRef<string[]>([]);
 
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
@@ -115,6 +117,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
           scheduleInvalidation();
         } else if (channel === "dashboard:kpis") {
           setKpis(data as KPIData);
+          scheduleInvalidation();
         } else if (channel === "system") {
           const sysData = data as Record<string, unknown>;
           if (sysData.type === "heartbeat") {
@@ -141,10 +144,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       setStatus("connected");
       retryCount.current = 0;
 
-      // Subscribe to requested channels
-      if (channels.length > 0) {
-        ws.send(JSON.stringify({ type: "subscribe", channels }));
+      // Subscribe to requested channels (read from ref to avoid stale closure)
+      const currentChannels = channelsRef.current;
+      if (currentChannels.length > 0) {
+        ws.send(JSON.stringify({ type: "subscribe", channels: currentChannels }));
       }
+      prevChannels.current = currentChannels;
     };
 
     ws.onmessage = handleMessage;
@@ -164,7 +169,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     ws.onerror = () => {
       // onclose will fire after this, triggering reconnect
     };
-  }, [channels, handleMessage]);
+  }, [handleMessage]);
 
   useEffect(() => {
     connect();
