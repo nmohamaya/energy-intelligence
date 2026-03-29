@@ -68,6 +68,15 @@ jobs:
           cache-from: type=registry,ref=${{ env.WEB_APP_IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.WEB_APP_IMAGE }}:buildcache,mode=max
 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: "${{ env.WEB_APP_IMAGE }}:${{ github.sha }}"
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+
   build-prediction-service:
     name: Build Prediction Service Image
     runs-on: ubuntu-latest
@@ -109,3 +118,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.PREDICTION_IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.PREDICTION_IMAGE }}:buildcache,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: "${{ env.PREDICTION_IMAGE }}:${{ github.sha }}"
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
