@@ -2,7 +2,26 @@
 
 An AI-powered predictive operations platform for renewable energy asset management. This prototype demonstrates what the next-generation "operating system for renewable energy" could look like — built with a production-grade microservices architecture.
 
-![Dashboard](https://img.shields.io/badge/Status-Prototype-green) ![React](https://img.shields.io/badge/React-18-blue) ![Node.js](https://img.shields.io/badge/Node.js-20-green) ![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED) ![Python](https://img.shields.io/badge/Python-3.11-yellow) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-3-blue)
+![Dashboard](https://img.shields.io/badge/Status-Prototype-green) ![React](https://img.shields.io/badge/React-18-blue) ![Node.js](https://img.shields.io/badge/Node.js-20-green) ![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED) ![Python](https://img.shields.io/badge/Python-3.12-yellow) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-3-blue)
+
+## Table of Contents
+
+- [Overview](#overview)
+- [System Architecture](#system-architecture)
+- [Tech Stack](#tech-stack)
+- [ML Prediction Microservice](#ml-prediction-microservice)
+- [Pages](#pages)
+- [All Deployment Options](#all-deployment-options)
+- [Project Structure](#project-structure)
+- [API Endpoints](#api-endpoints)
+- [Documentation](#documentation)
+- [Design System](#design-system)
+- [Container Images](#container-images)
+- [Troubleshooting](#troubleshooting)
+- [Production Considerations](#production-considerations)
+- [License](#license)
+
+---
 
 ## Overview
 
@@ -251,8 +270,11 @@ For a production build:
 
 ```bash
 npm run build
-NODE_ENV=production node dist/index.cjs   # → http://localhost:5000
+set -a && source .env && set +a   # export SESSION_SECRET (required in production)
+NODE_ENV=production node dist/index.cjs   # requires HTTPS (secure cookies)
 ```
+
+> **Note:** Production mode enforces HTTPS-only session cookies. For local development, use `npm run dev` instead.
 
 ### Option 2: Docker Compose (Full Stack)
 
@@ -364,39 +386,52 @@ kubectl -n energy-intelligence top pods
 
 ```
 energy-intelligence/
-├── client/                          # Frontend (React + TypeScript)
-│   ├── src/
-│   │   ├── components/              # Shared components (Sidebar, ThemeProvider)
-│   │   ├── pages/                   # Page components (Dashboard, Fleet, etc.)
-│   │   ├── lib/                     # Utilities (queryClient, cn helper)
-│   │   ├── hooks/                   # Custom React hooks
-│   │   └── App.tsx                  # Router and app shell
-│   └── index.html
-├── server/                          # Backend (Express.js)
-│   ├── routes.ts                    # API endpoint definitions
-│   ├── storage.ts                   # Data simulation and in-memory store
-│   └── index.ts                     # Express server setup
+├── client/                          # Frontend (React 18 + TypeScript)
+│   └── src/
+│       ├── components/              # AppSidebar, ThemeProvider, 52 shadcn/ui components
+│       ├── pages/                   # Dashboard, Fleet, Maintenance, DigitalTwin, Analytics, Login
+│       ├── hooks/                   # use-auth, use-websocket, use-mobile, use-toast
+│       ├── lib/                     # queryClient, utils
+│       └── App.tsx                  # Router, AuthProvider, app shell
+├── server/                          # Backend (Express 5)
+│   ├── routes/                      # Per-resource route modules
+│   │   ├── index.ts                 # Route orchestrator (registerRoutes)
+│   │   ├── auth.ts                  # Login, register, logout, current user
+│   │   ├── dashboard.ts            # Portfolio KPIs
+│   │   ├── assets.ts               # Fleet data with filters
+│   │   ├── predictions.ts          # AI predictions
+│   │   ├── digital-twin.ts         # Digital twin metrics
+│   │   └── analytics.ts            # Production and revenue analytics
+│   ├── auth/                        # Authentication (passport, session, password hashing)
+│   ├── db/                          # Database layer (Drizzle schema, storage, seed, migrations)
+│   ├── middleware/                   # Auth guard, RBAC, rate limiting
+│   ├── __tests__/                   # Vitest unit/integration tests (7 files)
+│   ├── storage.ts                   # IStorage interface + MemStorage + lazy-init proxy
+│   ├── websocket.ts                 # Channel-based WebSocket server
+│   ├── app.ts                       # Express app setup
+│   └── index.ts                     # Server entry point
 ├── shared/
-│   └── schema.ts                    # Zod schemas + TypeScript types
+│   └── schema.ts                    # Zod schemas + TypeScript types (single source of truth)
 ├── services/
-│   └── prediction-service/          # ML Microservice (Python)
-│       ├── app.py                   # FastAPI application with ML models
-│       ├── requirements.txt         # Python dependencies
-│       └── Dockerfile               # Python 3.11-slim container
-├── k8s/
-│   └── base/                        # Kubernetes manifests
-│       ├── namespace.yaml           # Namespace isolation
-│       ├── configmap.yaml           # Environment configuration
-│       ├── secret.yaml              # Database credentials
-│       ├── web-app.yaml             # Deployment + Service (Node.js)
-│       ├── prediction-service.yaml  # Deployment + Service (Python)
-│       ├── timescaledb.yaml         # StatefulSet + PVC + Headless Service
-│       ├── ingress.yaml             # Nginx ingress with TLS
-│       ├── hpa.yaml                 # Horizontal Pod Autoscalers
-│       └── network-policy.yaml      # Zero-trust network policies
-├── Dockerfile                       # Main app multi-stage build
-├── docker-compose.yml               # Local multi-service development
-├── BUILD_SPEC.md                    # Full design and data specification
+│   └── prediction-service/          # ML Microservice (Python FastAPI)
+│       ├── app.py                   # Isolation Forest + Gradient Boosting models
+│       ├── tests/                   # Pytest test suite (6 files)
+│       └── Dockerfile               # Python 3.12-slim container
+├── e2e/                             # Playwright E2E browser tests (6 specs)
+│   ├── fixtures/                    # Auth fixture (pre-authenticated sessions)
+│   └── pages/                       # Page objects (login, sidebar)
+├── docs/                            # Documentation
+│   ├── ARCHITECTURE.md              # System architecture deep-dive
+│   ├── TESTING.md                   # Test strategy and guide
+│   ├── API.md                       # API reference
+│   ├── CONTRIBUTING.md              # Contribution guidelines
+│   ├── ROADMAP.md                   # Production roadmap
+│   ├── adr/                         # Architecture Decision Records (6 ADRs)
+│   └── lessons/                     # 12 architecture teaching lessons
+├── k8s/base/                        # Kubernetes manifests (9 files)
+├── .github/workflows/               # CI/CD (lint, test, build, Docker push)
+├── Dockerfile                       # Web app multi-stage build
+├── docker-compose.yml               # Local full-stack development
 └── package.json
 ```
 
@@ -426,6 +461,24 @@ GET  /model/info            — Model metadata and capabilities
 
 ---
 
+## Documentation
+
+Detailed documentation lives in the [`docs/`](docs/) directory:
+
+| Document | Description |
+| -------- | ----------- |
+| [Architecture](docs/ARCHITECTURE.md) | System overview, service boundaries, request lifecycle, storage layer, auth flow, WebSocket protocol |
+| [Testing Guide](docs/TESTING.md) | Test strategy, running tests, test structure, coverage, CI integration |
+| [API Reference](docs/API.md) | All REST endpoints, WebSocket protocol, rate limits, error format |
+| [Contributing](docs/CONTRIBUTING.md) | Setup, branch conventions, PR process, code style |
+| [ADRs](docs/adr/) | Architecture Decision Records — why we chose each technology |
+| [Roadmap](docs/ROADMAP.md) | Production roadmap, simulated vs real data mapping |
+| [Bug Fixes](docs/BUGFIXES.md) | Key bugs, root causes, and lessons learned |
+| [Lessons](docs/lessons/) | 12 architecture teaching lessons covering the full stack |
+| [Changelog](CHANGELOG.md) | All notable changes by date and PR |
+
+---
+
 ## Design System
 
 - **Primary accent**: Electric green (#22c55e) — energy/sustainability
@@ -449,18 +502,42 @@ Both use multi-stage builds to minimize image size. The web-app Dockerfile build
 
 ---
 
+## Troubleshooting
+
+| Issue | Solution |
+| ----- | -------- |
+| Port 5000 already in use | Kill existing process: `lsof -ti:5000 \| xargs kill` or change `PORT` in `.env` |
+| `SESSION_SECRET environment variable is required in production` | Run `set -a && source .env && set +a` before starting, or use `npm run dev` for local development |
+| Production mode login fails (401 on all requests after login) | Production enforces HTTPS-only cookies. Use `npm run dev` for local development |
+| `DATABASE_URL` not set warning | This is normal for local dev — the app falls back to MemStorage with simulated data |
+| Docker Compose services not starting | Ensure Docker daemon is running. Check `.env` file exists with credentials. Try `docker compose down -v && docker compose up --build` |
+| Playwright tests failing locally | Install browsers first: `npx playwright install chromium` |
+| TypeScript errors after schema change | Update `shared/schema.ts` first, then propagate to client and server |
+| Python prediction service import errors | Run `pip install -r requirements.txt` in `services/prediction-service/` |
+
+---
+
 ## Production Considerations
 
-This is a prototype. For production deployment, you would additionally need:
+This is a prototype with a working foundation. What's been built and what remains:
 
-- **CI/CD Pipeline** — GitHub Actions building and pushing container images on merge to main
+**Completed:**
+
+- CI/CD pipeline (GitHub Actions: lint, typecheck, test, build, Docker push to GHCR)
+- Authentication + RBAC (session-based, 4 roles, route protection)
+- TimescaleDB persistence (Drizzle ORM, dual storage backends)
+- WebSocket real-time streaming (channel-based protocol, session auth)
+- Comprehensive test suite (Vitest, Playwright E2E, Pytest)
+
+**Remaining for production:**
+
 - **Secrets Management** — HashiCorp Vault or AWS Secrets Manager (not base64-encoded K8s Secrets)
 - **Monitoring** — Prometheus + Grafana for cluster and application metrics
-- **Logging** — EFK stack (Elasticsearch, Fluentd, Kibana) or Loki + Grafana
-- **Service Mesh** — Istio or Linkerd for mTLS, traffic management, and observability
+- **Logging** — EFK stack or Loki + Grafana for centralized logging
+- **Keycloak/OIDC** — Enterprise SSO replacing session-based auth
 - **Database Backup** — Automated pg_dump to S3 with point-in-time recovery
-- **Model Registry** — MLflow or similar for ML model versioning and A/B testing
-- **Real SCADA Integration** — OPC-UA or Modbus TCP adapters for real sensor data ingestion
+- **Real SCADA Integration** — OPC-UA or Modbus TCP adapters for real sensor data
+- **Model Registry** — MLflow for ML model versioning and A/B testing
 
 ---
 
