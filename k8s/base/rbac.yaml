@@ -1,0 +1,54 @@
+# =============================================================================
+# RBAC — Least-privilege ServiceAccounts
+#
+# Each deployment gets its own ServiceAccount with automountServiceAccountToken
+# disabled. Application pods do not need Kubernetes API access.
+# =============================================================================
+
+# ServiceAccount for the web application
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web-app
+  namespace: energy-intelligence
+  labels:
+    app.kubernetes.io/part-of: energy-intelligence
+    app.kubernetes.io/component: frontend
+automountServiceAccountToken: false
+---
+# ServiceAccount for the prediction service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prediction-service
+  namespace: energy-intelligence
+  labels:
+    app.kubernetes.io/part-of: energy-intelligence
+    app.kubernetes.io/component: ml-inference
+automountServiceAccountToken: false
+---
+# Minimal Role for web-app — read-only access to configmaps
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: web-app-role
+  namespace: energy-intelligence
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+# Bind the role to the web-app ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: web-app-binding
+  namespace: energy-intelligence
+subjects:
+  - kind: ServiceAccount
+    name: web-app
+    namespace: energy-intelligence
+roleRef:
+  kind: Role
+  name: web-app-role
+  apiGroup: rbac.authorization.k8s.io

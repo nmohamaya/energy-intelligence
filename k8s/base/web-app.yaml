@@ -21,12 +21,25 @@ spec:
         app: web-app
         app.kubernetes.io/part-of: energy-intelligence
     spec:
+      serviceAccountName: web-app
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: web-app
           image: ghcr.io/nmohamaya/energy-intelligence/web-app:latest
           ports:
             - containerPort: 5000
               protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - configMapRef:
                 name: energy-config
@@ -43,6 +56,9 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: /api/dashboard
@@ -65,6 +81,10 @@ spec:
               port: 5000
             failureThreshold: 30
             periodSeconds: 2
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
       # Pod disruption budget-friendly: allow graceful shutdown
       terminationGracePeriodSeconds: 30
 ---
