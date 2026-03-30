@@ -32,6 +32,9 @@ jobs:
       id-token: write  # Required for cosign keyless signing via OIDC
     steps:
       - uses: actions/checkout@v4
+        with:
+          # For workflow_run, build the exact commit that passed CI (avoids race with new pushes).
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -73,7 +76,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.35.0
         with:
-          image-ref: "${{ env.WEB_APP_IMAGE }}:${{ github.sha }}"
+          image-ref: "${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}"
           format: "table"
           exit-code: "1"
           severity: "CRITICAL,HIGH"
@@ -105,6 +108,8 @@ jobs:
       id-token: write  # Required for cosign keyless signing via OIDC
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -142,7 +147,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.35.0
         with:
-          image-ref: "${{ env.PREDICTION_IMAGE }}:${{ github.sha }}"
+          image-ref: "${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}"
           format: "table"
           exit-code: "1"
           severity: "CRITICAL,HIGH"

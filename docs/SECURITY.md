@@ -32,7 +32,7 @@ The platform uses session-based authentication with the following cookie attribu
 |-----------|-------|---------|
 | `httpOnly` | `true` | Prevents client-side JavaScript access to session cookies |
 | `secure` | `true` | Cookies transmitted only over HTTPS |
-| `sameSite` | `strict` | Mitigates CSRF by restricting cross-site cookie transmission |
+| `sameSite` | `lax` | Mitigates CSRF by restricting cross-site cookie transmission |
 
 ### Role-Based Access Control (RBAC)
 
@@ -129,7 +129,7 @@ Workload RBAC follows the principle of least privilege:
 
 | ServiceAccount | Permissions |
 |----------------|-------------|
-| `web-app` | `get`, `list` on ConfigMaps (own namespace only) |
+| `web-app` | No cluster API access |
 | `prediction-service` | No cluster API access |
 
 ### TLS Termination
@@ -155,7 +155,7 @@ TLS is terminated at the Ingress layer using cert-manager for automated certific
 | `npm audit` | Node.js | Every CI run |
 | `pip-audit` | Python | Every CI run |
 
-Both audits run on every pull request and block merge on findings rated HIGH or above.
+Both audits run on every pull request. They are currently **informational** (`continue-on-error: true`) while baseline findings are triaged. Once clean, they will be promoted to required checks that block merge on HIGH or above.
 
 ### Container Image Scanning
 
@@ -183,7 +183,7 @@ Both audits run on every pull request and block merge on findings rated HIGH or 
 
 ### Automated Scanning
 
-Dependency vulnerability scans execute on every pull request via `npm audit` and `pip-audit`. Results are surfaced in the CI check status. No PR may merge with unresolved HIGH or CRITICAL findings.
+Dependency vulnerability scans execute on every pull request via `npm audit` and `pip-audit`. Results are surfaced in the CI check status. Once baseline findings are resolved, audit jobs will be promoted to required CI checks that block merge on HIGH or CRITICAL findings.
 
 ---
 

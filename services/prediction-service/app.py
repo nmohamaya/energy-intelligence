@@ -58,10 +58,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 # --- CORS — restrict to known origins ---
-ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ORIGINS",
-    "http://localhost:5000,http://localhost:5173",
-).split(",")
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS",
+        "http://localhost:5000,http://localhost:5173",
+    ).split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
