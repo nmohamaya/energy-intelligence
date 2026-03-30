@@ -1,0 +1,29 @@
+# =============================================================================
+# RBAC — Least-privilege ServiceAccounts
+#
+# Each deployment gets its own ServiceAccount with automountServiceAccountToken
+# disabled. Application pods do not need Kubernetes API access — envFrom injects
+# ConfigMap/Secret values at pod creation time without requiring API calls.
+# =============================================================================
+
+# ServiceAccount for the web application
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web-app
+  namespace: energy-intelligence
+  labels:
+    app.kubernetes.io/part-of: energy-intelligence
+    app.kubernetes.io/component: frontend
+automountServiceAccountToken: false
+---
+# ServiceAccount for the prediction service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prediction-service
+  namespace: energy-intelligence
+  labels:
+    app.kubernetes.io/part-of: energy-intelligence
+    app.kubernetes.io/component: ml-inference
+automountServiceAccountToken: false

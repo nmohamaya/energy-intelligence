@@ -12,6 +12,7 @@ Architecture Decision Records capture the key architectural decisions made durin
 | 004 | [Single-Port Express + Vite](004-express-vite-single-port.md) | Accepted | 2026-02-01 |
 | 005 | [IStorage Interface Pattern](005-storage-interface.md) | Accepted | 2026-02-01 |
 | 006 | [Drizzle ORM](006-drizzle-orm.md) | Accepted | 2026-03-15 |
+| 007 | [Security Hardening Strategy](007-security-hardening.md) | Accepted | 2026-03-29 |
 
 ## ADR Template
 

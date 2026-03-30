@@ -5,3 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: energy-intelligence
     app.kubernetes.io/managed-by: kubectl
+    # Pod Security Standards — enforce restricted profile
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

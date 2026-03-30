@@ -221,6 +221,30 @@ describe("API Routes", () => {
     });
   });
 
+  // --- Security headers (Helmet.js) ---
+
+  describe("Security headers", () => {
+    it("sets X-Content-Type-Options on API responses", async () => {
+      const res = await agent.get("/api/dashboard");
+      expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    });
+
+    it("sets X-Frame-Options on API responses", async () => {
+      const res = await agent.get("/api/dashboard");
+      expect(res.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    });
+
+    it("sets Referrer-Policy on API responses", async () => {
+      const res = await agent.get("/api/dashboard");
+      expect(res.headers["referrer-policy"]).toBeDefined();
+    });
+
+    it("does not expose X-Powered-By header", async () => {
+      const res = await agent.get("/api/dashboard");
+      expect(res.headers["x-powered-by"]).toBeUndefined();
+    });
+  });
+
   // --- Logout ---
 
   describe("POST /api/auth/logout", () => {

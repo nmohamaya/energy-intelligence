@@ -21,12 +21,25 @@ spec:
         app: prediction-service
         app.kubernetes.io/part-of: energy-intelligence
     spec:
+      serviceAccountName: prediction-service
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: prediction-service
           image: ghcr.io/nmohamaya/energy-intelligence/prediction-service:latest
           ports:
             - containerPort: 8001
               protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - configMapRef:
                 name: energy-config
@@ -41,6 +54,11 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: model-cache
+              mountPath: /app/.cache
           livenessProbe:
             httpGet:
               path: /health
@@ -62,6 +80,13 @@ spec:
             # Model loading can take a few seconds
             failureThreshold: 30
             periodSeconds: 2
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 500Mi
       terminationGracePeriodSeconds: 30
 ---
 apiVersion: v1

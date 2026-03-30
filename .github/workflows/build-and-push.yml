@@ -29,8 +29,12 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # Required for cosign keyless signing via OIDC
     steps:
       - uses: actions/checkout@v4
+        with:
+          # For workflow_run, build the exact commit that passed CI (avoids race with new pushes).
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -57,6 +61,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push web-app image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -68,6 +73,31 @@ jobs:
           cache-from: type=registry,ref=${{ env.WEB_APP_IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.WEB_APP_IMAGE }}:buildcache,mode=max
 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: "${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}"
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image (keyless via GitHub OIDC)
+        run: cosign sign --yes ${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-web-app.spdx.json
+
+      - name: Attach SBOM to image
+        run: cosign attach sbom --sbom sbom-web-app.spdx.json ${{ env.WEB_APP_IMAGE }}@${{ steps.build.outputs.digest }}
+
   build-prediction-service:
     name: Build Prediction Service Image
     runs-on: ubuntu-latest
@@ -75,8 +105,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # Required for cosign keyless signing via OIDC
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -100,6 +133,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push prediction-service image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./services/prediction-service
@@ -109,3 +143,28 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.PREDICTION_IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.PREDICTION_IMAGE }}:buildcache,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: "${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}"
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image (keyless via GitHub OIDC)
+        run: cosign sign --yes ${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-prediction-service.spdx.json
+
+      - name: Attach SBOM to image
+        run: cosign attach sbom --sbom sbom-prediction-service.spdx.json ${{ env.PREDICTION_IMAGE }}@${{ steps.build.outputs.digest }}
