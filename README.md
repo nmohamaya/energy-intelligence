@@ -174,28 +174,57 @@ GET  /model/info            — Model metadata and feature descriptions
 
 ### Prerequisites
 
-| Tool | Version | Check |
+Verify you have the required tools installed:
+
+| Tool | Version | Verify |
 |---|---|---|
 | **Node.js** | 20+ | `node --version` |
 | **npm** | 9+ | `npm --version` |
 | **Docker** (optional) | 24+ | `docker --version` |
 | **kubectl** (optional) | 1.28+ | `kubectl version --client` |
 
-### Launch the App
+### Setup & Launch
 
 ```bash
-# 1. Clone the repo
+# 1. Clone the repository
 git clone https://github.com/nmohamaya/energy-intelligence.git
 cd energy-intelligence
 
-# 2. Install dependencies
+# 2. Set up environment variables
+cp .env.example .env
+# ⚠️  Edit .env with custom values (SESSION_SECRET, passwords)
+# ⚠️  NEVER commit .env to version control — it contains secrets
+
+# 3. Install dependencies
 npm install
 
-# 3. Start the development server
+# 4. Initialize the database (creates schema + seeds demo data)
+npm run db:setup
+
+# 5. Start the development server
 npm run dev
 ```
 
 **That's it.** Open [http://localhost:5000](http://localhost:5000) in your browser.
+
+### Security Note: Environment Variables
+
+⚠️ **Never commit `.env` to version control.** The `.env.example` file shows the expected variables, but your actual `.env` contains secrets:
+- `SESSION_SECRET` — session encryption key
+- `POSTGRES_PASSWORD` — database password  
+- `ADMIN_PASSWORD` — default admin account password
+
+**Recommended setup:**
+1. Copy `.env.example` to `.env`
+2. Edit `.env` with your custom values
+3. Add `.env` to `.gitignore` (already included in this repo)
+4. For CI/CD deployments, use GitHub Secrets or your platform's secret management
+
+Your `.git/info/exclude` file further prevents accidental commits:
+```bash
+# Check if .env is protected
+git check-ignore .env     # Should output: .env
+```
 
 ### What You'll See
 
@@ -281,7 +310,12 @@ NODE_ENV=production node dist/index.cjs   # requires HTTPS (secure cookies)
 Runs all three services (web app, ML prediction service, TimescaleDB) in containers. Best for testing the full microservices architecture locally.
 
 ```bash
-# Build and start all services (first run takes ~2 min to build images)
+# 1. Set up environment variables
+cp .env.example .env
+# Edit .env with your custom values (credentials, passwords)
+# Docker Compose reads .env automatically
+
+# 2. Build and start all services (first run takes ~2 min to build images)
 docker-compose up --build
 
 # Or run in the background
@@ -506,11 +540,15 @@ Both use multi-stage builds to minimize image size. The web-app Dockerfile build
 
 | Issue | Solution |
 | ----- | -------- |
+| `.env` file not found | Run `cp .env.example .env` and customize the values |
+| `SESSION_SECRET environment variable is required in production` | Edit your `.env` file and set a long random string: `openssl rand -base64 32` |
+| `DATABASE_URL not set` | Add `DATABASE_URL` to your `.env` file (see `.env.example` for format) |
+| Database push fails: `permission denied` | Ensure PostgreSQL is running and `POSTGRES_PASSWORD` in `.env` is correct |
+| `npm run db:setup` hangs | Check if PostgreSQL is running. For local dev: `docker-compose up -d timescaledb` before `npm run db:setup` |
 | Port 5000 already in use | Kill existing process: `lsof -ti:5000 \| xargs kill` or change `PORT` in `.env` |
-| `SESSION_SECRET environment variable is required in production` | Run `set -a && source .env && set +a` before starting, or use `npm run dev` for local development |
+| `SESSION_SECRET` warning persists | Ensure `.env` is in the project root and contains `SESSION_SECRET=<your-secret>` |
 | Production mode login fails (401 on all requests after login) | Production enforces HTTPS-only cookies. Use `npm run dev` for local development |
-| `DATABASE_URL` not set warning | This is normal for local dev — the app falls back to MemStorage with simulated data |
-| Docker Compose services not starting | Ensure Docker daemon is running. Check `.env` file exists with credentials. Try `docker compose down -v && docker compose up --build` |
+| Docker Compose services not starting | Ensure Docker daemon is running. Check `.env` file exists with correct credentials. Try `docker compose down -v && docker compose up --build` |
 | Playwright tests failing locally | Install browsers first: `npx playwright install chromium` |
 | TypeScript errors after schema change | Update `shared/schema.ts` first, then propagate to client and server |
 | Python prediction service import errors | Run `pip install -r requirements.txt` in `services/prediction-service/` |
